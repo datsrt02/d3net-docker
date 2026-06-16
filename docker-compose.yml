@@ -1,0 +1,12 @@
+services:
+  daikin-d3net-server:
+    build: .
+    container_name: daikin-d3net-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "1502:1502"
+    volumes:
+      - ./config:/config
+    environment:
+      - CONFIG_FILE=/config/config.json

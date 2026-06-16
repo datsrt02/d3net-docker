@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Daikin DIII-Net Server</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background:#f6f7f9; color:#111; }
+    .card { background:#fff; border-radius:12px; padding:18px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,.06); }
+    label { display:block; margin-top:10px; font-weight:600; }
+    input, select { width:100%; max-width:420px; padding:9px; margin-top:5px; border:1px solid #ccc; border-radius:8px; }
+    button { padding:10px 14px; border:0; border-radius:8px; cursor:pointer; margin:8px 6px 0 0; }
+    .primary { background:#155eef; color:#fff; }
+    .danger { background:#b42318; color:#fff; }
+    .muted { color:#667085; }
+    table { border-collapse: collapse; width: 100%; background:#fff; }
+    th, td { padding:10px; border-bottom:1px solid #eee; text-align:left; }
+    .ok { color: #067647; font-weight:700; }
+    .bad { color: #b42318; font-weight:700; }
+    .row { display:flex; gap:16px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+  <h1>Daikin DIII-Net Docker Modbus Server</h1>
+  <p class="muted">Web UI: 8080 | Virtual Modbus TCP: cấu hình mặc định port 1502</p>
+
+  <div class="card">
+    <h2>Cấu hình Gateway DIII / Modbus upstream</h2>
+    <div class="row">
+      <div>
+        <label>Gateway IP</label>
+        <input id="upstream_host" value="{{ config.upstream_host }}" />
+      </div>
+      <div>
+        <label>Gateway Port</label>
+        <input id="upstream_port" type="number" value="{{ config.upstream_port }}" />
+      </div>
+      <div>
+        <label>Slave ID</label>
+        <input id="upstream_slave" type="number" value="{{ config.upstream_slave }}" />
+      </div>
+      <div>
+        <label>Protocol</label>
+        <select id="upstream_protocol">
+          <option value="tcp">Modbus TCP</option>
+          <option value="rtu_over_tcp">Modbus RTU over TCP</option>
+        </select>
+      </div>
+      <div>
+        <label>Poll interval giây</label>
+        <input id="poll_interval" type="number" step="0.5" value="{{ config.poll_interval }}" />
+      </div>
+      <div>
+        <label>Virtual Modbus TCP Port</label>
+        <input id="virtual_modbus_port" type="number" value="{{ config.virtual_modbus_port }}" />
+      </div>
+    </div>
+    <button class="primary" onclick="saveConfig()">Save</button>
+    <button class="primary" onclick="startServer()">Connect / Start</button>
+    <button class="danger" onclick="stopServer()">Stop polling</button>
+    <button onclick="refreshAll()">Refresh</button>
+    <span id="saved" class="ok" style="display:none">Saved</span>
+  </div>
+
+  <div class="card">
+    <h2>Trạng thái</h2>
+    <div id="status">Đang tải...</div>
+  </div>
+
+  <div class="card">
+    <h2>Indoor units</h2>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Power</th><th>Mode</th><th>Fan</th><th>Setpoint</th><th>Room</th><th>Control</th></tr>
+      </thead>
+      <tbody id="units"></tbody>
+    </table>
+  </div>
+
+<script>
+document.getElementById('upstream_protocol').value = '{{ config.upstream_protocol }}';
+
+async function api(path, options={}) {
+  const res = await fetch(path, {headers:{'Content-Type':'application/json'}, ...options});
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
+}
+
+function cfgPayload() {
+  return {
+    name: 'Daikin D3net',
+    upstream_host: document.getElementById('upstream_host').value,
+    upstream_port: Number(document.getElementById('upstream_port').value),
+    upstream_slave: Number(document.getElementById('upstream_slave').value),
+    upstream_protocol: document.getElementById('upstream_protocol').value,
+    poll_interval: Number(document.getElementById('poll_interval').value),
+    virtual_modbus_host: '0.0.0.0',
+    virtual_modbus_port: Number(document.getElementById('virtual_modbus_port').value)
+  };
+}
+
+async function saveConfig() {
+  await api('/api/config', {method:'POST', body:JSON.stringify(cfgPayload())});
+  const s = document.getElementById('saved'); s.style.display='inline'; setTimeout(()=>s.style.display='none', 3000);
+}
+async function startServer() { await saveConfig(); await api('/api/start', {method:'POST'}); await refreshAll(); }
+async function stopServer() { await api('/api/stop', {method:'POST'}); await refreshAll(); }
+
+async function refreshAll() {
+  const st = await api('/api/status');
+  document.getElementById('status').innerHTML = `Running: <b>${st.running}</b> | Connected: <b class="${st.connected?'ok':'bad'}">${st.connected}</b> | Units: <b>${st.unit_count}</b> ${st.last_error ? '<br><span class="bad">'+st.last_error+'</span>' : ''}`;
+  const units = await api('/api/units');
+  const tbody = document.getElementById('units');
+  tbody.innerHTML = '';
+  for (const u of units) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${u.id}</td><td>${u.power?'On':'Off'}</td><td>${u.mode}</td><td>${u.fan_speed}/${u.fan_direction}</td><td>${u.setpoint}</td><td>${u.current_temperature}</td>
+      <td>
+        <button onclick="setPower('${u.id}', ${!u.power})">${u.power?'Off':'On'}</button>
+        <button onclick="setMode('${u.id}')">Mode</button>
+        <button onclick="setSetpoint('${u.id}')">Setpoint</button>
+      </td>`;
+    tbody.appendChild(tr);
+  }
+}
+async function setPower(id, p) { await api(`/api/unit/${id}/power`, {method:'POST', body:JSON.stringify({power:p})}); await refreshAll(); }
+async function setMode(id) { const mode = prompt('Mode: FAN, HEAT, COOL, AUTO, DRY', 'COOL'); if(mode) { await api(`/api/unit/${id}/mode`, {method:'POST', body:JSON.stringify({mode})}); await refreshAll(); } }
+async function setSetpoint(id) { const v = prompt('Setpoint °C', '24'); if(v) { await api(`/api/unit/${id}/setpoint`, {method:'POST', body:JSON.stringify({setpoint:Number(v)})}); await refreshAll(); } }
+
+refreshAll();
+setInterval(refreshAll, 10000);
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
-# Daikin DIII-Net Docker Modbus Server - Kanonbus Style UI
+# Daikin DIII-Net Docker Modbus Server - DATND Style UI
 
-Bản Docker này tách phần lõi D3net ra khỏi Home Assistant và bổ sung giao diện web dạng Kanonbus/HBS như video mẫu:
+Bản Docker này tách phần lõi D3net ra khỏi Home Assistant và bổ sung giao diện web dạng DATND/HBS như video mẫu:
 
 - Login local
 - Menu trái dạng cây: Monitoring, Module Daikin HBS, App Interface Config, Area/Floor/Room, Register Map, Logs
@@ -52,3 +52,8 @@ IP_SERVER:1502
 ## Lưu ý
 
 Giao diện Area/Room/App Device hiện lưu bằng localStorage của trình duyệt để mô phỏng phần cấu hình app trong video. Phần kết nối Daikin thật vẫn dùng API backend và D3netGateway.
+
+
+## v4 changes
+- Removed duplicated System Setting menu group.
+- Replaced KANONBUS logo text with DATND.

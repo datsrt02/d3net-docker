@@ -71,6 +71,8 @@ class D3netRuntime:
             )
             asyncio.create_task(self.modbus.run())
             await self.gateway.async_setup()
+            if not self.gateway.units:
+                await self.rediscover_units_from_system()
             self.connected = True
             self.last_error = None
             await self.sync_all_to_virtual_modbus()
@@ -149,6 +151,36 @@ class D3netRuntime:
             except Exception:
                 # Error registers are non-critical for climate control.
                 pass
+
+
+    async def rediscover_units_from_system(self) -> None:
+        """Populate gateway.units from 30002-30005 even if the original setup path failed to render them.
+
+        This is the robust discovery path used by the web UI: 30002-30005 are the
+        source of truth for connected DIII group addresses, and 30006-30009 are
+        used to exclude communication-error units.
+        """
+        if not self.gateway:
+            return
+        system = await self.gateway.async_read(SystemStatus, 0)
+        discovered: list[D3netUnit] = []
+        for index, connected in enumerate(system.units_connected):
+            if not connected or system.units_error[index]:
+                continue
+            cap = await self.gateway.async_read(UnitCapability, index)
+            st = await self.gateway.async_read(UnitStatus, index)
+            discovered.append(D3netUnit(self.gateway, index, cap, st))
+        self.gateway._units = discovered
+        self.connected = True
+        self.last_error = None
+
+    async def units_json_async(self) -> list[dict[str, Any]]:
+        """Return units for the web UI, forcing rediscovery from 30002-30009 when needed."""
+        if not self.gateway:
+            return []
+        if not self.gateway.units:
+            await self.rediscover_units_from_system()
+        return self.units_json()
 
     def get_unit_by_id(self, unit_id: str) -> D3netUnit:
         if not self.gateway:

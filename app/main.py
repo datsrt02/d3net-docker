@@ -87,12 +87,15 @@ async def api_status() -> dict[str, Any]:
 
 @app.get("/api/units")
 async def api_units() -> list[dict[str, Any]]:
-    return runtime.units_json()
+    try:
+        return await runtime.units_json_async()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/unit/{unit_id}")
 async def api_unit(unit_id: str) -> dict[str, Any]:
-    for unit in runtime.units_json():
+    for unit in await runtime.units_json_async():
         if unit["id"] == unit_id:
             return unit
     raise HTTPException(status_code=404, detail="Unit not found")

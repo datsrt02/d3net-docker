@@ -38,7 +38,13 @@ The KNX monitor UI/API is implemented. The current build uses an internal telegr
 - Holding control: `42001 + index*3`.
 
 
-## v12 changes
+## v13 changes
 - Removed KNX Group Address Mapping panel.
 - Renamed App Interface Config to Indoor Mapping Address.
 - Added target Modify workflow with ACSwitch, ACTempSetpoint, ACTempAmbient, ACMode and ACFan KNX address fields.
+
+
+## v13 changes
+- Modify Target now opens as a separate page while keeping the left menu.
+- Added Back button to return to Indoor Mapping Address.
+- ACSwitch, ACTempSetpoint, ACTempAmbient, ACMode, ACFan are accordion rows; click each row to expand/collapse KNX Address fields.

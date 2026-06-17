@@ -108,6 +108,10 @@ class D3netRuntime:
     async def poll_once(self) -> None:
         if not self.gateway:
             return
+        # Auto discovery must run on every poll. The Daikin interface can discover
+        # a new indoor after the web app has already started; 30002-30005 are the
+        # source of truth for the connected DIII addresses.
+        await self.rediscover_units_from_system()
         for unit in self.gateway.units or []:
             await unit.async_update_status()
         self.connected = True
@@ -175,11 +179,14 @@ class D3netRuntime:
         self.last_error = None
 
     async def units_json_async(self) -> list[dict[str, Any]]:
-        """Return units for the web UI, forcing rediscovery from 30002-30009 when needed."""
+        """Return units for the web UI, always refreshing discovery from 30002-30009.
+
+        This makes the web Auto Refresh show newly connected indoor units without
+        requiring the user to press Scan / Connect again.
+        """
         if not self.gateway:
             return []
-        if not self.gateway.units:
-            await self.rediscover_units_from_system()
+        await self.rediscover_units_from_system()
         return self.units_json()
 
     def get_unit_by_id(self, unit_id: str) -> D3netUnit:

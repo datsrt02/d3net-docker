@@ -69,3 +69,8 @@ Sau khi bấm Start, mở: /api/debug/system để xem raw 30001-30009 gateway t
 
 ## v7 note
 - Discovery now uses 30002-30005 as the source of truth. If 310xx/320xx are temporarily unreadable, the indoor is still displayed and refreshed later.
+
+
+## v10
+- Auto refresh now respects the 10s/30s/Off selector.
+- Every refresh re-reads 30002-30005 and adds newly discovered indoor units automatically.

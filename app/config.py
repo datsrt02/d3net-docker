@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 CONFIG_FILE = Path(os.getenv("CONFIG_FILE", "/config/config.json"))
 
@@ -17,6 +17,13 @@ class AppConfig(BaseModel):
     poll_interval: float = 10.0
     virtual_modbus_host: str = "0.0.0.0"
     virtual_modbus_port: int = Field(default=1502, ge=1, le=65535)
+
+    # KNX Gateway configuration used by the Menu Management > KNX Gateway Config page.
+    knx_gateway_name: str = "KNX Main Gateway"
+    knx_gateway_ip: str = "192.168.1.10"
+    knx_gateway_port: int = Field(default=3671, ge=1, le=65535)
+    knx_physical_address: str = "1.1.10"
+    knx_protocol: str = Field(default="TunnelUDP", pattern="^(TunnelUDP|TunnelTCP|Multicast)$")
 
 
 def load_config() -> AppConfig:

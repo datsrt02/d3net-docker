@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import deque
 from datetime import datetime
 from typing import Any
@@ -62,7 +63,7 @@ def _boolish(value: Any) -> bool:
 class KnxRuntime:
     """KNXnet/IP runtime.
 
-    v16 changes this from a UI-only placeholder into a real KNXnet/IP sender.
+    v18/v16 changes this from a UI-only placeholder into a real KNXnet/IP sender.
     The monitor table still records outgoing telegrams locally, but `publish_group_value()`
     now also sends GroupValueWrite telegrams to the configured KNX/IP gateway when connected.
     """
@@ -216,6 +217,64 @@ class KnxRuntime:
         self.monitor_enabled = enabled
         self.add_log("local", self.config.physical_address, "-", "Monitor", "", "ON" if enabled else "OFF")
 
+    def _extract_payload_bytes(self, payload: Any) -> list[int]:
+        """Extract KNX payload bytes from xknx payload objects.
+
+        xknx represents incoming GroupValueWrite values as nested objects such as:
+        <GroupValueWrite value="<DPTArray value="[0x0,0x19]" />" />
+        The old monitor used str(payload), so the web table showed XML fragments.
+        This helper extracts the real byte values so the monitor can display decoded data.
+        """
+        if payload is None:
+            return []
+
+        candidates = []
+        value = getattr(payload, "value", None)
+        candidates.append(value)
+        candidates.append(getattr(value, "value", None))
+        candidates.append(payload)
+
+        for item in candidates:
+            if item is None:
+                continue
+            if isinstance(item, int):
+                return [item & 0xFF]
+            if isinstance(item, (bytes, bytearray)):
+                return [int(x) & 0xFF for x in item]
+            if isinstance(item, (list, tuple)):
+                try:
+                    return [int(x) & 0xFF for x in item]
+                except Exception:
+                    pass
+
+        text = str(payload)
+        hex_values = re.findall(r"0x[0-9a-fA-F]+", text)
+        if hex_values:
+            return [int(x, 16) & 0xFF for x in hex_values]
+        return []
+
+    def _decode_dpt9(self, data: list[int]) -> float:
+        raw = ((data[0] & 0xFF) << 8) | (data[1] & 0xFF)
+        exponent = (raw >> 11) & 0x0F
+        mantissa = raw & 0x07FF
+        if mantissa & 0x0400:
+            mantissa -= 0x0800
+        return round(0.01 * mantissa * (2 ** exponent), 2)
+
+    def _decode_bus_value(self, destination: str, payload: Any) -> tuple[str, Any]:
+        data = self._extract_payload_bytes(payload)
+        if not data:
+            return "raw", str(payload) if payload is not None else ""
+
+        # Without an ETS project/group-address DPT table, infer common values:
+        # 2 bytes -> DPT 9.xxx 2-byte float, 1 byte -> DPT 5.xxx byte, 0/1 -> switch.
+        if len(data) >= 2:
+            return "9.001", self._decode_dpt9(data[-2:])
+        byte_value = data[-1] & 0xFF
+        if byte_value in (0, 1):
+            return "1.001", byte_value
+        return "5.xxx", byte_value
+
     def _telegram_received(self, telegram: Any) -> None:
         if not self.monitor_enabled:
             return
@@ -224,10 +283,10 @@ class KnxRuntime:
             destination = str(getattr(telegram, "destination_address", ""))
             payload = getattr(telegram, "payload", None)
             typ = type(payload).__name__ if payload is not None else "Telegram"
-            value = str(payload) if payload is not None else ""
-            self.add_log("from bus", source, destination, typ, "", value)
-        except Exception:
-            pass
+            dpt, value = self._decode_bus_value(destination, payload)
+            self.add_log("from bus", source, destination, typ, dpt, value)
+        except Exception as exc:
+            self.add_log("KNX monitor error", "", "-", "Decode", "", str(exc))
 
     def _payload_for_dpt(self, dpt: str, value: Any):
         dpt = (dpt or "").strip()

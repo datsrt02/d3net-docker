@@ -1,4 +1,4 @@
-# DATND Daikin DIII-Net / KNX UI v17
+# DATND Daikin DIII-Net / KNX UI v18
 
 Fix KNX connect: XKNX start is now run as a background task so `/api/knx/connect` returns immediately and the UI status can become connected.
 

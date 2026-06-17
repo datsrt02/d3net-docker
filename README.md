@@ -48,3 +48,7 @@ The KNX monitor UI/API is implemented. The current build uses an internal telegr
 - Modify Target now opens as a separate page while keeping the left menu.
 - Added Back button to return to Indoor Mapping Address.
 - ACSwitch, ACTempSetpoint, ACTempAmbient, ACMode, ACFan are accordion rows; click each row to expand/collapse KNX Address fields.
+
+
+## v14
+- Update buttons in ACSwitch/ACTempSetpoint/ACTempAmbient/ACMode/ACFan show inline Saved text for 2 seconds.

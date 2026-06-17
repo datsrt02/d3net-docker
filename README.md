@@ -66,3 +66,6 @@ Giao diện Area/Room/App Device hiện lưu bằng localStorage của trình du
 
 ## Debug discovery
 Sau khi bấm Start, mở: /api/debug/system để xem raw 30001-30009 gateway trả về. Mở /api/debug/unit/1-00 để xem raw 31001-31003, 32001-32006, 33601-33602.
+
+## v7 note
+- Discovery now uses 30002-30005 as the source of truth. If 310xx/320xx are temporarily unreadable, the indoor is still displayed and refreshed later.

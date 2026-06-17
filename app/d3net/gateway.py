@@ -95,10 +95,21 @@ class D3netGateway:
 
                 for index, connected in enumerate(system_decoder.units_connected):
                     if connected and not system_decoder.units_error[index]:
-                        capabilities: UnitCapability = await self._async_read(
-                            UnitCapability, index
-                        )
-                        status: UnitStatus = await self._async_read(UnitStatus, index)
+                        try:
+                            capabilities: UnitCapability = await self._async_read(
+                                UnitCapability, index
+                            )
+                            status: UnitStatus = await self._async_read(UnitStatus, index)
+                        except Exception as exc:
+                            # Do not drop a discovered indoor only because its capability/status
+                            # group cannot be read yet. Some gateways need more time after 30001
+                            # becomes ready. The poll loop will refresh the real values later.
+                            _LOGGER.warning(
+                                "Unit %02i exists in 30002-30005 but capability/status read failed: %s",
+                                index, exc,
+                            )
+                            capabilities = UnitCapability([0, 0, 0])
+                            status = UnitStatus([1, 0, 220, 0, 250, 0])
                         unit = D3netUnit(self, index, capabilities, status)
                         self._units.append(unit)
 

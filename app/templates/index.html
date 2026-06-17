@@ -3,132 +3,168 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Daikin DIII-Net Server</title>
+  <title>Daikin DIII-Net Control Server</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; background:#f6f7f9; color:#111; }
-    .card { background:#fff; border-radius:12px; padding:18px; margin-bottom:16px; box-shadow:0 2px 10px rgba(0,0,0,.06); }
-    label { display:block; margin-top:10px; font-weight:600; }
-    input, select { width:100%; max-width:420px; padding:9px; margin-top:5px; border:1px solid #ccc; border-radius:8px; }
-    button { padding:10px 14px; border:0; border-radius:8px; cursor:pointer; margin:8px 6px 0 0; }
-    .primary { background:#155eef; color:#fff; }
-    .danger { background:#b42318; color:#fff; }
-    .muted { color:#667085; }
-    table { border-collapse: collapse; width: 100%; background:#fff; }
-    th, td { padding:10px; border-bottom:1px solid #eee; text-align:left; }
-    .ok { color: #067647; font-weight:700; }
-    .bad { color: #b42318; font-weight:700; }
-    .row { display:flex; gap:16px; flex-wrap:wrap; }
+    :root{
+      --top:#202020; --accent:#e24a20; --blue:#11a2d8; --side:#e8f0f8; --side2:#d9e7f4;
+      --line:#c9d5df; --text:#1f2933; --muted:#687787; --ok:#15803d; --bad:#b91c1c;
+      --panel:#ffffff; --bg:#f6f8fb;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);font-size:13px}
+    .login{position:fixed;inset:0;background:#f7f7f7;display:flex;align-items:flex-start;justify-content:center;padding-top:115px;z-index:99}
+    .login-card{width:760px;background:#fff;border:1px solid #d4d8dd;padding:22px 24px 28px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+    .login-row{display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:center;margin:12px 0}.login input{height:30px;border:1px solid #b8c3cf;padding:5px 8px}.login button{width:100%;height:30px;background:#eee;border:1px solid #c9c9c9;cursor:pointer}.login-title{font-weight:700;margin-bottom:10px}
+    .app{display:none;min-height:100vh}.top{height:62px;background:#fff;border-bottom:1px solid #ccd6e0}.brand{height:38px;display:flex;align-items:center;padding:0 18px}.logo{font-size:21px;font-weight:800;color:#e43716;letter-spacing:.5px}.logo span{color:#111}.bar{height:24px;background:var(--top);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:12px}.bar b{color:#44c7ff}.layout{display:flex}.side{width:250px;background:var(--side);border-right:1px solid var(--line);min-height:calc(100vh - 62px);padding:8px 0}.side-title{padding:7px 12px;background:var(--side2);font-weight:700;border-top:1px solid #c5d4e3;border-bottom:1px solid #c5d4e3}.tree{list-style:none;margin:0;padding:6px 0}.tree li{padding:5px 12px 5px 23px;cursor:pointer;color:#0f5e98;position:relative}.tree li:before{content:'◆';font-size:8px;position:absolute;left:10px;color:#ff3ea5}.tree li.active{background:#d5e8f8;color:#000;font-weight:700}.tree li .sub{display:block;color:#8b1db5;font-weight:400;margin-left:10px;margin-top:5px}.content{flex:1;padding:12px 16px}.page{display:none}.page.active{display:block}.caption{background:#efefef;border-left:5px solid var(--accent);padding:5px 8px;margin:0 0 12px;font-weight:700}.panel{background:var(--panel);border:1px solid #cfd8e3;margin-bottom:12px}.panel h3{margin:0;padding:7px 10px;background:#f0f3f7;border-bottom:1px solid #cfd8e3;font-size:13px}.panel-body{padding:12px}.grid{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:10px 18px}.field label{display:block;margin-bottom:4px;color:#333}.field input,.field select,.field textarea{width:100%;height:28px;border:1px solid #aebdcc;padding:4px 7px;background:#fff}.field textarea{height:64px}.btn{height:28px;padding:0 14px;border:1px solid #aaa;background:#eee;cursor:pointer;margin:4px 4px 4px 0}.btn.primary{background:#ff8f1f;border-color:#d66c00;color:#fff}.btn.blue{background:#2196d3;border-color:#1682b8;color:#fff}.btn.danger{background:#c0392b;border-color:#9f2419;color:#fff}.btn.green{background:#2e9b55;border-color:#238345;color:#fff}.saved{display:none;color:var(--ok);font-weight:700;margin-left:8px}.status-line{display:flex;gap:20px;align-items:center;flex-wrap:wrap}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:#999;margin-right:5px}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}table{border-collapse:collapse;width:100%;background:#fff}th,td{border:1px solid #d4dde8;padding:6px;text-align:left}th{background:#edf4fb}.muted{color:var(--muted)}.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}.tile{background:#fff;border:1px solid #cfd8e3;border-radius:4px;overflow:hidden}.tile-head{background:#1c1c1c;color:#fff;padding:7px 10px;display:flex;justify-content:space-between}.tile-body{padding:12px}.temp{font-size:46px;text-align:center;color:#666;margin:8px 0}.temp small{font-size:18px}.pill{padding:2px 8px;border-radius:12px;background:#edf4fb;border:1px solid #c7d8e7;margin-right:4px;display:inline-block}.ctrl-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.ctrl-row select,.ctrl-row input{height:28px;border:1px solid #aebdcc;padding:4px;min-width:78px}.icon-grid{display:grid;grid-template-columns:repeat(10,32px);gap:7px;max-width:430px}.icon{width:32px;height:32px;border:1px solid #aaa;border-radius:4px;display:flex;align-items:center;justify-content:center;background:#fff;cursor:pointer;font-size:18px}.icon.selected{outline:2px solid #f26a21}.split{display:grid;grid-template-columns:1fr 1fr;gap:12px}.log{background:#111;color:#d1f7d1;height:180px;overflow:auto;padding:10px;font-family:Consolas,monospace;font-size:12px}.reg{font-family:Consolas,monospace}.footer-note{font-size:12px;color:#6b7280;margin-top:8px}.thermo{width:142px;height:142px;margin:0 auto;border-radius:50%;background:conic-gradient(#ff8c25 0deg,#ff8c25 260deg,#e7edf2 260deg);display:flex;align-items:center;justify-content:center}.thermo-inner{width:108px;height:108px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;flex-direction:column;border:1px solid #d0d8e0}.thermo-inner b{font-size:34px}.badge{font-size:11px;background:#e6f6ee;color:#126c3a;border:1px solid #b9e1c9;padding:2px 6px;border-radius:10px}.badge.off{background:#f6e7e7;color:#8b1a1a;border-color:#e0b1b1}@media(max-width:900px){.layout{display:block}.side{width:100%;min-height:auto}.grid,.split{grid-template-columns:1fr}.content{padding:10px}.login-card{width:92%}}
   </style>
 </head>
 <body>
-  <h1>Daikin DIII-Net Docker Modbus Server</h1>
-  <p class="muted">Web UI: 8080 | Virtual Modbus TCP: cấu hình mặc định port 1502</p>
-
-  <div class="card">
-    <h2>Cấu hình Gateway DIII / Modbus upstream</h2>
-    <div class="row">
-      <div>
-        <label>Gateway IP</label>
-        <input id="upstream_host" value="{{ config.upstream_host }}" />
-      </div>
-      <div>
-        <label>Gateway Port</label>
-        <input id="upstream_port" type="number" value="{{ config.upstream_port }}" />
-      </div>
-      <div>
-        <label>Slave ID</label>
-        <input id="upstream_slave" type="number" value="{{ config.upstream_slave }}" />
-      </div>
-      <div>
-        <label>Protocol</label>
-        <select id="upstream_protocol">
-          <option value="tcp">Modbus TCP</option>
-          <option value="rtu_over_tcp">Modbus RTU over TCP</option>
-        </select>
-      </div>
-      <div>
-        <label>Poll interval giây</label>
-        <input id="poll_interval" type="number" step="0.5" value="{{ config.poll_interval }}" />
-      </div>
-      <div>
-        <label>Virtual Modbus TCP Port</label>
-        <input id="virtual_modbus_port" type="number" value="{{ config.virtual_modbus_port }}" />
-      </div>
+  <div id="login" class="login">
+    <div class="login-card">
+      <div class="login-title">Login</div>
+      <div class="login-row"><label>Username</label><input id="lg_user" value="admin"></div>
+      <div class="login-row"><label>Password</label><input id="lg_pass" type="password" value="admin"></div>
+      <button onclick="doLogin()">Submit</button>
+      <p class="muted">Tài khoản mặc định chỉ dùng cho giao diện local: admin / admin</p>
     </div>
-    <button class="primary" onclick="saveConfig()">Save</button>
-    <button class="primary" onclick="startServer()">Connect / Start</button>
-    <button class="danger" onclick="stopServer()">Stop polling</button>
-    <button onclick="refreshAll()">Refresh</button>
-    <span id="saved" class="ok" style="display:none">Saved</span>
   </div>
 
-  <div class="card">
-    <h2>Trạng thái</h2>
-    <div id="status">Đang tải...</div>
-  </div>
+  <div id="app" class="app">
+    <div class="top">
+      <div class="brand"><div class="logo">KANON<span>BUS</span></div></div>
+      <div class="bar"><div>Daikin DIII-Net / Modbus Server</div><div>Virtual Modbus TCP: <b id="modbusPort">1502</b> | Web: <b>8080</b></div></div>
+    </div>
+    <div class="layout">
+      <aside class="side">
+        <div class="side-title">Menu Management</div>
+        <ul class="tree">
+          <li class="active" data-page="dashboard">Monitoring / Control</li>
+          <li data-page="module">Module Daikin HBS</li>
+          <li data-page="appcfg">App Interface Config</li>
+          <li data-page="area">Area / Floor / Room</li>
+          <li data-page="registers">Modbus Register Map</li>
+          <li data-page="logs">Event Log</li>
+        </ul>
+        <div class="side-title">System Setting</div>
+        <ul class="tree">
+          <li data-page="module">Gateway Setting</li>
+          <li data-page="appcfg">Device Setting</li>
+          <li data-page="area">Group Setting</li>
+          <li data-page="logs">System Status</li>
+        </ul>
+        <div class="side-title">Devices</div>
+        <ul class="tree" id="deviceTree"><li class="muted">No discovered indoor</li></ul>
+      </aside>
 
-  <div class="card">
-    <h2>Indoor units</h2>
-    <table>
-      <thead>
-        <tr><th>ID</th><th>Power</th><th>Mode</th><th>Fan</th><th>Setpoint</th><th>Room</th><th>Control</th></tr>
-      </thead>
-      <tbody id="units"></tbody>
-    </table>
+      <main class="content">
+        <section id="dashboard" class="page active">
+          <div class="caption">1. Giám sát và điều khiển điều hòa Daikin</div>
+          <div class="panel"><h3>System status</h3><div class="panel-body">
+            <div class="status-line" id="statusLine">Đang tải...</div>
+            <div style="margin-top:8px"><button class="btn green" onclick="startServer()">Connect / Start</button><button class="btn" onclick="refreshAll()">Refresh</button><button class="btn danger" onclick="stopServer()">Stop</button><button class="btn blue" onclick="groupPower(true)">All ON</button><button class="btn" onclick="groupPower(false)">All OFF</button></div>
+          </div></div>
+          <div class="tiles" id="unitTiles"></div>
+        </section>
+
+        <section id="module" class="page">
+          <div class="caption">2. Kiểm tra địa chỉ dàn lạnh trên Module Daikin HBS</div>
+          <div class="panel"><h3>Connection Parameter</h3><div class="panel-body grid">
+            <div class="field"><label>Gateway IP</label><input id="upstream_host" value="{{ config.upstream_host }}"></div>
+            <div class="field"><label>Gateway Port</label><input id="upstream_port" type="number" value="{{ config.upstream_port }}"></div>
+            <div class="field"><label>Slave ID</label><input id="upstream_slave" type="number" value="{{ config.upstream_slave }}"></div>
+            <div class="field"><label>Protocol</label><select id="upstream_protocol"><option value="tcp">Modbus TCP</option><option value="rtu_over_tcp">Modbus RTU over TCP</option></select></div>
+            <div class="field"><label>Poll Interval</label><input id="poll_interval" type="number" step="0.5" value="{{ config.poll_interval }}"></div>
+            <div class="field"><label>Virtual Modbus Port</label><input id="virtual_modbus_port" type="number" value="{{ config.virtual_modbus_port }}"></div>
+            <div class="field"><label>Device Name</label><input id="device_name" value="Daikin D3net"></div>
+            <div class="field"><label>Auto Refresh</label><select id="auto_refresh"><option>10s</option><option>30s</option><option>Off</option></select></div>
+          </div><div class="panel-body"><button class="btn primary" onclick="saveConfig()">Save</button><button class="btn green" onclick="startServer()">Scan / Connect</button><button class="btn" onclick="pollOnce()">Poll Once</button><span id="saved" class="saved">Saved</span></div></div>
+          <div class="panel"><h3>Discovered DIII indoor addresses</h3><div class="panel-body"><table><thead><tr><th>DIII Address</th><th>Index</th><th>Power</th><th>Mode</th><th>Fan</th><th>Setpoint</th><th>Room Temp</th><th>Capability</th></tr></thead><tbody id="unitTable"></tbody></table></div></div>
+        </section>
+
+        <section id="appcfg" class="page">
+          <div class="caption">3. Cấu hình giao diện App</div>
+          <div class="split">
+            <div class="panel"><h3>Object / Device Config</h3><div class="panel-body grid" style="grid-template-columns:repeat(2,minmax(160px,1fr))">
+              <div class="field"><label>Target Name</label><input id="targetName" placeholder="VD: Living Room AC"></div>
+              <div class="field"><label>Target Type</label><select id="targetType"><option>Air Conditioner</option><option>Lighting</option><option>Scene</option><option>Sensor</option></select></div>
+              <div class="field"><label>Object Name</label><input id="objectName" placeholder="AC_LivingRoom"></div>
+              <div class="field"><label>Bind Indoor</label><select id="bindIndoor"></select></div>
+              <div class="field"><label>Icon</label><input id="iconValue" value="❄️"></div>
+              <div class="field"><label>Area / Room</label><select id="bindRoom"></select></div>
+              <div class="field"><label>Temperature Mode</label><select><option>Cooling / Heating</option><option>Cooling only</option><option>Fan only</option></select></div>
+              <div class="field"><label>Show in App</label><select><option>Yes</option><option>No</option></select></div>
+            </div><div class="panel-body"><button class="btn" onclick="showIcons()">Select Icon</button><button class="btn primary" onclick="addDeviceConfig()">Save Device</button></div></div>
+            <div class="panel"><h3>Icon List</h3><div class="panel-body"><div class="icon-grid" id="iconGrid"></div><div class="footer-note">Tương tự video: chọn icon, đặt tên target, bind địa chỉ module/indoor rồi lưu cấu hình hiển thị app.</div></div></div>
+          </div>
+          <div class="panel"><h3>Configured App Devices</h3><div class="panel-body"><table><thead><tr><th>Icon</th><th>Target</th><th>Object</th><th>Room</th><th>Indoor</th><th>Type</th><th>Action</th></tr></thead><tbody id="deviceConfigTable"></tbody></table></div></div>
+        </section>
+
+        <section id="area" class="page">
+          <div class="caption">4. Area / Floor / Room Setting</div>
+          <div class="panel"><h3>Create Area Tree</h3><div class="panel-body grid">
+            <div class="field"><label>Area</label><input id="areaName" placeholder="VD: Villa A"></div>
+            <div class="field"><label>Floor</label><input id="floorName" placeholder="VD: Floor 1"></div>
+            <div class="field"><label>Room</label><input id="roomName" placeholder="VD: Living Room"></div>
+            <div class="field"><label>&nbsp;</label><button class="btn primary" onclick="addRoom()">Add Room</button></div>
+          </div></div>
+          <div class="panel"><h3>Room List</h3><div class="panel-body"><table><thead><tr><th>Area</th><th>Floor</th><th>Room</th><th>Action</th></tr></thead><tbody id="roomTable"></tbody></table></div></div>
+        </section>
+
+        <section id="registers" class="page">
+          <div class="caption">5. Modbus Register Map</div>
+          <div class="panel"><h3>Register theo chuẩn Daikin Modbus Interface DIII</h3><div class="panel-body">
+            <table><thead><tr><th>Register</th><th>Zero-based Address</th><th>Type</th><th>Ý nghĩa</th></tr></thead><tbody>
+              <tr><td class="reg">30001</td><td class="reg">0</td><td>Input</td><td>Bit 0: Ready / Busy, Bit 1: Other DIII device exists</td></tr>
+              <tr><td class="reg">30002-30005</td><td class="reg">1-4</td><td>Input</td><td>Bit trạng thái địa chỉ dàn lạnh 1-00 đến 4-15</td></tr>
+              <tr><td class="reg">31001 + index*3</td><td class="reg">1000 + index*3</td><td>Input</td><td>Capability của từng indoor</td></tr>
+              <tr><td class="reg">32001 + index*6</td><td class="reg">2000 + index*6</td><td>Input</td><td>Power, fan, swing, status</td></tr>
+              <tr><td class="reg">32002 + index*6</td><td class="reg">2001 + index*6</td><td>Input</td><td>Mode, operation status, filter</td></tr>
+              <tr><td class="reg">32003 + index*6</td><td class="reg">2002 + index*6</td><td>Input</td><td>Setpoint x10</td></tr>
+              <tr><td class="reg">32005 + index*6</td><td class="reg">2004 + index*6</td><td>Input</td><td>Room temperature x10</td></tr>
+              <tr><td class="reg">42001 + index*3</td><td class="reg">2000 + index*3</td><td>Holding</td><td>On/Off, fan speed, fan direction</td></tr>
+              <tr><td class="reg">42002 + index*3</td><td class="reg">2001 + index*3</td><td>Holding</td><td>Operation mode, filter reset</td></tr>
+              <tr><td class="reg">42003 + index*3</td><td class="reg">2002 + index*3</td><td>Holding</td><td>Setpoint x10</td></tr>
+            </tbody></table>
+          </div></div>
+        </section>
+
+        <section id="logs" class="page">
+          <div class="caption">6. Event Log</div>
+          <div class="panel"><h3>Runtime Log</h3><div class="panel-body"><div id="log" class="log"></div><button class="btn" onclick="clearLog()">Clear Log</button></div></div>
+        </section>
+      </main>
+    </div>
   </div>
 
 <script>
-document.getElementById('upstream_protocol').value = '{{ config.upstream_protocol }}';
-
-async function api(path, options={}) {
-  const res = await fetch(path, {headers:{'Content-Type':'application/json'}, ...options});
-  if (!res.ok) throw new Error(await res.text());
-  return await res.json();
-}
-
-function cfgPayload() {
-  return {
-    name: 'Daikin D3net',
-    upstream_host: document.getElementById('upstream_host').value,
-    upstream_port: Number(document.getElementById('upstream_port').value),
-    upstream_slave: Number(document.getElementById('upstream_slave').value),
-    upstream_protocol: document.getElementById('upstream_protocol').value,
-    poll_interval: Number(document.getElementById('poll_interval').value),
-    virtual_modbus_host: '0.0.0.0',
-    virtual_modbus_port: Number(document.getElementById('virtual_modbus_port').value)
-  };
-}
-
-async function saveConfig() {
-  await api('/api/config', {method:'POST', body:JSON.stringify(cfgPayload())});
-  const s = document.getElementById('saved'); s.style.display='inline'; setTimeout(()=>s.style.display='none', 3000);
-}
-async function startServer() { await saveConfig(); await api('/api/start', {method:'POST'}); await refreshAll(); }
-async function stopServer() { await api('/api/stop', {method:'POST'}); await refreshAll(); }
-
-async function refreshAll() {
-  const st = await api('/api/status');
-  document.getElementById('status').innerHTML = `Running: <b>${st.running}</b> | Connected: <b class="${st.connected?'ok':'bad'}">${st.connected}</b> | Units: <b>${st.unit_count}</b> ${st.last_error ? '<br><span class="bad">'+st.last_error+'</span>' : ''}`;
-  const units = await api('/api/units');
-  const tbody = document.getElementById('units');
-  tbody.innerHTML = '';
-  for (const u of units) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${u.id}</td><td>${u.power?'On':'Off'}</td><td>${u.mode}</td><td>${u.fan_speed}/${u.fan_direction}</td><td>${u.setpoint}</td><td>${u.current_temperature}</td>
-      <td>
-        <button onclick="setPower('${u.id}', ${!u.power})">${u.power?'Off':'On'}</button>
-        <button onclick="setMode('${u.id}')">Mode</button>
-        <button onclick="setSetpoint('${u.id}')">Setpoint</button>
-      </td>`;
-    tbody.appendChild(tr);
-  }
-}
-async function setPower(id, p) { await api(`/api/unit/${id}/power`, {method:'POST', body:JSON.stringify({power:p})}); await refreshAll(); }
-async function setMode(id) { const mode = prompt('Mode: FAN, HEAT, COOL, AUTO, DRY', 'COOL'); if(mode) { await api(`/api/unit/${id}/mode`, {method:'POST', body:JSON.stringify({mode})}); await refreshAll(); } }
-async function setSetpoint(id) { const v = prompt('Setpoint °C', '24'); if(v) { await api(`/api/unit/${id}/setpoint`, {method:'POST', body:JSON.stringify({setpoint:Number(v)})}); await refreshAll(); } }
-
-refreshAll();
-setInterval(refreshAll, 10000);
+const icons = ['❄️','🔥','💨','🌡️','🏠','🛏️','🛋️','🍽️','🚿','💡','🔌','🎵','📺','🪟','🚪','🔒','🔔','⭐','🌙','☀️','🌀','🧊','♨️','📱','⚙️','✅','⬆️','⬇️','◀️','▶️'];
+let units=[];let rooms=JSON.parse(localStorage.getItem('rooms')||'[]');let devices=JSON.parse(localStorage.getItem('devices')||'[]');
+document.getElementById('upstream_protocol').value='{{ config.upstream_protocol }}';
+function doLogin(){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';refreshAll();renderLocal();}
+function log(s){const el=document.getElementById('log');const t=new Date().toLocaleTimeString();el.innerHTML+=`[${t}] ${s}<br>`;el.scrollTop=el.scrollHeight}
+function clearLog(){document.getElementById('log').innerHTML=''}
+document.querySelectorAll('.tree li[data-page]').forEach(li=>li.onclick=()=>{document.querySelectorAll('.tree li').forEach(x=>x.classList.remove('active'));li.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(li.dataset.page).classList.add('active')});
+async function api(path, options={}){const res=await fetch(path,{headers:{'Content-Type':'application/json'},...options});if(!res.ok)throw new Error(await res.text());return await res.json()}
+function cfgPayload(){return{name:document.getElementById('device_name').value||'Daikin D3net',upstream_host:document.getElementById('upstream_host').value,upstream_port:Number(document.getElementById('upstream_port').value),upstream_slave:Number(document.getElementById('upstream_slave').value),upstream_protocol:document.getElementById('upstream_protocol').value,poll_interval:Number(document.getElementById('poll_interval').value),virtual_modbus_host:'0.0.0.0',virtual_modbus_port:Number(document.getElementById('virtual_modbus_port').value)}}
+async function saveConfig(){await api('/api/config',{method:'POST',body:JSON.stringify(cfgPayload())});document.getElementById('modbusPort').textContent=document.getElementById('virtual_modbus_port').value;const s=document.getElementById('saved');s.style.display='inline';setTimeout(()=>s.style.display='none',3000);log('Saved gateway configuration')}
+async function startServer(){try{await saveConfig();await api('/api/start',{method:'POST'});log('Connected / started D3net polling')}catch(e){log('ERROR start: '+e.message)}await refreshAll()}
+async function stopServer(){try{await api('/api/stop',{method:'POST'});log('Stopped polling')}catch(e){log('ERROR stop: '+e.message)}await refreshAll()}
+async function pollOnce(){try{await api('/api/poll',{method:'POST'});log('Manual poll completed')}catch(e){log('ERROR poll: '+e.message)}await refreshAll()}
+function fmt(v){return (v===null||v===undefined)?'-':v}
+async function refreshAll(){try{const st=await api('/api/status');document.getElementById('statusLine').innerHTML=`<span><i class="dot ${st.running?'ok':'bad'}"></i>Running: <b>${st.running}</b></span><span><i class="dot ${st.connected?'ok':'bad'}"></i>Connected: <b>${st.connected}</b></span><span>Units: <b>${st.unit_count}</b></span>${st.last_error?'<span style="color:var(--bad)">'+st.last_error+'</span>':''}`;units=await api('/api/units');renderUnits()}catch(e){document.getElementById('statusLine').innerHTML='<span style="color:var(--bad)">'+e.message+'</span>';log('ERROR refresh: '+e.message)}}
+function renderUnits(){const table=document.getElementById('unitTable');const tiles=document.getElementById('unitTiles');const tree=document.getElementById('deviceTree');const bind=document.getElementById('bindIndoor');table.innerHTML='';tiles.innerHTML='';tree.innerHTML='';bind.innerHTML='';if(!units.length){tiles.innerHTML='<div class="panel"><div class="panel-body muted">Chưa có indoor. Vào Module Daikin HBS → Scan / Connect để đọc địa chỉ dàn lạnh.</div></div>';tree.innerHTML='<li class="muted">No discovered indoor</li>';bind.innerHTML='<option>1-00</option>';return}for(const u of units){table.innerHTML+=`<tr><td>${u.id}</td><td>${u.index}</td><td>${u.power?'On':'Off'}</td><td>${u.mode}</td><td>${u.fan_speed}/${u.fan_direction}</td><td>${fmt(u.setpoint)}</td><td>${fmt(u.current_temperature)}</td><td>${Object.entries(u.capabilities||{}).filter(([k,v])=>v===true).map(([k])=>k).join(', ')}</td></tr>`;tree.innerHTML+=`<li data-page="dashboard">Indoor ${u.id}<span class="sub">${u.power?'Online / ON':'Online / OFF'}</span></li>`;bind.innerHTML+=`<option>${u.id}</option>`;tiles.innerHTML+=`<div class="tile"><div class="tile-head"><b>Indoor ${u.id}</b><span class="badge ${u.power?'':'off'}">${u.power?'ON':'OFF'}</span></div><div class="tile-body"><div class="thermo"><div class="thermo-inner"><span>Room</span><b>${fmt(u.current_temperature)}</b><small>°C</small></div></div><div style="text-align:center;margin-top:8px"><span class="pill">${u.mode}</span><span class="pill">${u.fan_speed}</span><span class="pill">Set ${fmt(u.setpoint)}°C</span></div><div class="ctrl-row"><button class="btn ${u.power?'danger':'green'}" onclick="setPower('${u.id}',${!u.power})">${u.power?'OFF':'ON'}</button><select id="mode_${u.id}"><option>COOL</option><option>HEAT</option><option>AUTO</option><option>DRY</option><option>FAN</option></select><button class="btn" onclick="setMode('${u.id}')">Mode</button><input id="sp_${u.id}" type="number" step="0.5" value="${fmt(u.setpoint)}"><button class="btn" onclick="setSetpoint('${u.id}')">Set</button></div></div></div>`}renderLocal()}
+async function setPower(id,p){try{await api(`/api/unit/${id}/power`,{method:'POST',body:JSON.stringify({power:p})});log(`Set ${id} power ${p}`)}catch(e){log('ERROR power: '+e.message)}await refreshAll()}
+async function setMode(id){const mode=document.getElementById('mode_'+id).value;try{await api(`/api/unit/${id}/mode`,{method:'POST',body:JSON.stringify({mode})});log(`Set ${id} mode ${mode}`)}catch(e){log('ERROR mode: '+e.message)}await refreshAll()}
+async function setSetpoint(id){const v=Number(document.getElementById('sp_'+id).value);try{await api(`/api/unit/${id}/setpoint`,{method:'POST',body:JSON.stringify({setpoint:v})});log(`Set ${id} setpoint ${v}`)}catch(e){log('ERROR setpoint: '+e.message)}await refreshAll()}
+async function groupPower(p){for(const u of units){await setPower(u.id,p)}}
+function showIcons(){document.querySelector('.tree li[data-page="appcfg"]').click();document.getElementById('iconGrid').scrollIntoView({behavior:'smooth'})}
+function renderIcons(){const g=document.getElementById('iconGrid');g.innerHTML='';icons.forEach(ic=>{const d=document.createElement('div');d.className='icon';d.textContent=ic;d.onclick=()=>{document.getElementById('iconValue').value=ic;document.querySelectorAll('.icon').forEach(x=>x.classList.remove('selected'));d.classList.add('selected')};g.appendChild(d)})}
+function addRoom(){const r={area:areaName.value||'Default Area',floor:floorName.value||'Floor 1',room:roomName.value||'Room'};rooms.push(r);localStorage.setItem('rooms',JSON.stringify(rooms));log('Added room '+r.room);renderLocal()}
+function addDeviceConfig(){const d={icon:iconValue.value,target:targetName.value||'Air Conditioner',object:objectName.value||'AC_Object',room:bindRoom.value||'-',indoor:bindIndoor.value||'1-00',type:targetType.value};devices.push(d);localStorage.setItem('devices',JSON.stringify(devices));log('Saved app device '+d.target);renderLocal()}
+function delRoom(i){rooms.splice(i,1);localStorage.setItem('rooms',JSON.stringify(rooms));renderLocal()}
+function delDevice(i){devices.splice(i,1);localStorage.setItem('devices',JSON.stringify(devices));renderLocal()}
+function renderLocal(){renderIcons();const rt=document.getElementById('roomTable');const br=document.getElementById('bindRoom');rt.innerHTML='';br.innerHTML='';rooms.forEach((r,i)=>{rt.innerHTML+=`<tr><td>${r.area}</td><td>${r.floor}</td><td>${r.room}</td><td><button class="btn danger" onclick="delRoom(${i})">Delete</button></td></tr>`;br.innerHTML+=`<option>${r.area} / ${r.floor} / ${r.room}</option>`});if(!rooms.length){br.innerHTML='<option>Default / Floor 1 / Room</option>'}const dt=document.getElementById('deviceConfigTable');dt.innerHTML='';devices.forEach((d,i)=>dt.innerHTML+=`<tr><td style="font-size:20px">${d.icon}</td><td>${d.target}</td><td>${d.object}</td><td>${d.room}</td><td>${d.indoor}</td><td>${d.type}</td><td><button class="btn danger" onclick="delDevice(${i})">Delete</button></td></tr>`)}
+setInterval(()=>{if(document.getElementById('app').style.display==='block')refreshAll()},10000);
 </script>
 </body>
 </html>

@@ -75,6 +75,7 @@ class KnxRuntime:
         self.logs: deque[dict[str, Any]] = deque(maxlen=500)
         self.mappings: list[KnxMapping] = []
         self._xknx: Any | None = None
+        self._xknx_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._last_published: dict[str, Any] = {}
 
@@ -116,16 +117,38 @@ class KnxRuntime:
                     telegram_received_cb=self._telegram_received,
                     daemon_mode=True,
                 )
-                await self._xknx.start()
+
+                # XKNX v3.x may keep `start()` running as the KNX event loop.
+                # If we await it directly here, the FastAPI /api/knx/connect request never returns,
+                # so the web button looks like it has no reaction and `connected` remains false.
+                # Run it as a background task instead, then use the task to send telegrams.
+                self._xknx_task = asyncio.create_task(self._run_xknx())
+                await asyncio.sleep(0.3)
+                if self._xknx_task.done():
+                    exc = self._xknx_task.exception()
+                    if exc:
+                        raise exc
                 self.connected = True
                 self.last_error = None
-                self.add_log("local", self.config.physical_address, "-", "Connect", "", f"Connected real KNX/IP {self.config.gateway_ip}:{self.config.gateway_port} via {self.config.protocol}")
+                self.add_log("local", self.config.physical_address, "-", "Connect", "", f"Started real KNX/IP {self.config.gateway_ip}:{self.config.gateway_port} via {self.config.protocol}")
             except Exception as exc:
                 self._xknx = None
                 self.connected = False
                 self.last_error = str(exc)
                 self.add_log("local", self.config.physical_address, "-", "ConnectError", "", self.last_error)
                 raise
+
+
+    async def _run_xknx(self) -> None:
+        try:
+            if self._xknx is not None:
+                await self._xknx.start()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.connected = False
+            self.last_error = str(exc)
+            self.add_log("KNX error", self.config.physical_address, "-", "Connection", "", self.last_error)
 
     async def disconnect(self) -> None:
         async with self._lock:
@@ -140,6 +163,14 @@ class KnxRuntime:
             except Exception:
                 pass
             self._xknx = None
+        if self._xknx_task is not None:
+            if not self._xknx_task.done():
+                self._xknx_task.cancel()
+                try:
+                    await self._xknx_task
+                except Exception:
+                    pass
+            self._xknx_task = None
 
     def status_json(self) -> dict[str, Any]:
         return {
@@ -148,6 +179,7 @@ class KnxRuntime:
             "last_error": self.last_error,
             "real_knx_enabled": self._xknx is not None,
             "xknx_installed": XKNX is not None,
+            "xknx_task_running": bool(self._xknx_task is not None and not self._xknx_task.done()),
             "config": self.config.model_dump(),
             "log_count": len(self.logs),
         }

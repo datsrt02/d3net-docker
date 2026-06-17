@@ -52,3 +52,18 @@ The KNX monitor UI/API is implemented. The current build uses an internal telegr
 
 ## v14
 - Update buttons in ACSwitch/ACTempSetpoint/ACTempAmbient/ACMode/ACFan show inline Saved text for 2 seconds.
+
+
+## v15 - D3net to KNX auto link
+
+This version automatically links configured Indoor Mapping Address targets to KNX status group addresses on each UI refresh.
+
+For each target, values are decoded from DIII-Net status registers using the following rules for indoor `1-00` and the same `+6 registers` step for following indoors:
+
+- On/off Status: `32001 bit 0` -> KNX DPT `1.001`, value `0/1`
+- Setpoint Status: `32003` signed x10 -> KNX DPT `9.001`
+- Status Ambient: `32005` signed x10 -> KNX DPT `9.001`
+- Mode Status: `32002 bits 0..3` -> `{0:9, 1:1, 2:3, 3:0, 7:14}`
+- Fan Status: `32001 bits 12..14` -> `{0:0, 1/2:85, 3:170, 4/5:255}`
+
+The current KNX runtime records these outgoing values in the KNX Monitor Log and de-duplicates unchanged values.

@@ -41,6 +41,11 @@ class FanDirectionRequest(BaseModel):
     direction: str
 
 
+class D3netKnxLinkRequest(BaseModel):
+    targets: list[dict[str, Any]] = []
+    force: bool = False
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "config": load_config()})
@@ -210,6 +215,95 @@ async def api_knx_logs(limit: int = 100, ga_filter: str | None = None) -> list[d
 async def api_knx_clear_logs() -> dict[str, Any]:
     knx_runtime.clear_logs()
     return {"ok": True}
+
+
+
+
+def _decode_dta_signed_x10(value: int) -> float:
+    value = int(value) & 0xFFFF
+    sign = -1 if (value & 0x8000) else 1
+    magnitude = value & 0x7FFF
+    return sign * magnitude / 10.0
+
+
+def _find_target_status_registers(unit_rows: list[dict[str, Any]], indoor: str) -> list[int] | None:
+    for unit in unit_rows:
+        if unit.get("id") == indoor:
+            raw = unit.get("raw") or {}
+            status = raw.get("status") or []
+            if len(status) >= 6:
+                return [int(x) for x in status[:6]]
+    return None
+
+
+def _target_section(target: dict[str, Any], section: str) -> dict[str, Any]:
+    mapping = target.get("mapping") or {}
+    value = mapping.get(section) or {}
+    return value if isinstance(value, dict) else {}
+
+
+@app.post("/api/knx/d3net-link/sync")
+async def api_knx_d3net_link_sync(body: D3netKnxLinkRequest) -> dict[str, Any]:
+    """Publish D3net status registers to configured KNX status group addresses.
+
+    Mapping per indoor index is based on DTA registers:
+    32001 + index*6: on/off bit0, fan bits12..14
+    32002 + index*6: mode bits0..3
+    32003 + index*6: setpoint x10 signed
+    32005 + index*6: ambient x10 signed
+    """
+    unit_rows = await runtime.units_json_async()
+    published: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    mode_map = {0: 9, 1: 1, 2: 3, 3: 0, 7: 14}
+    fan_map = {0: 0, 1: 85, 2: 85, 3: 170, 4: 255, 5: 255}
+
+    for target in body.targets:
+        indoor = str(target.get("indoor") or "").strip()
+        if not indoor:
+            continue
+        regs = _find_target_status_registers(unit_rows, indoor)
+        if regs is None:
+            skipped.append({"target": target.get("target"), "indoor": indoor, "reason": "indoor_not_found_or_no_status_registers"})
+            continue
+
+        r32001, r32002, r32003, _r32004, r32005, _r32006 = regs
+
+        values: list[tuple[str, str, Any, str]] = []
+        sw = _target_section(target, "switch")
+        sp = _target_section(target, "setpoint")
+        amb = _target_section(target, "ambient")
+        mode = _target_section(target, "mode")
+        fan = _target_section(target, "fan")
+
+        if sw.get("status"):
+            values.append(("On/off Status", sw.get("status"), 1 if (r32001 & 0x0001) else 0, "1.001"))
+
+        if sp.get("status"):
+            values.append(("Setpoint Status", sp.get("status"), _decode_dta_signed_x10(r32003), "9.001"))
+
+        if amb.get("status"):
+            values.append(("Status Ambient", amb.get("status"), _decode_dta_signed_x10(r32005), "9.001"))
+
+        mode_raw = r32002 & 0x000F
+        if mode.get("status") and mode_raw in mode_map:
+            values.append(("Mode Status", mode.get("status"), mode_map[mode_raw], "5.010"))
+        elif mode.get("status"):
+            skipped.append({"target": target.get("target"), "indoor": indoor, "field": "Mode Status", "raw": mode_raw, "reason": "unsupported_mode_value"})
+
+        fan_raw = (r32001 >> 12) & 0x0007
+        if fan.get("status") and fan_raw in fan_map:
+            values.append(("Fan Status", fan.get("status"), fan_map[fan_raw], "5.001"))
+        elif fan.get("status"):
+            skipped.append({"target": target.get("target"), "indoor": indoor, "field": "Fan Status", "raw": fan_raw, "reason": "unsupported_fan_value"})
+
+        for field, ga, value, dpt in values:
+            sent = knx_runtime.publish_group_value(str(ga), value, dpt, label=f"{indoor} {field}", force=body.force)
+            if sent:
+                published.append({"target": target.get("target"), "indoor": indoor, "field": field, "ga": ga, "dpt": dpt, "value": value})
+
+    return {"ok": True, "published_count": len(published), "published": published, "skipped": skipped}
 
 
 @app.get("/api/knx/mappings")

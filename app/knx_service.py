@@ -136,6 +136,26 @@ class KnxRuntime:
             i += 1
             await asyncio.sleep(2.5)
 
+
+    def publish_group_value(self, destination: str, value: Any, dpt: str, source: str | None = None, force: bool = False, label: str = "D3netLink") -> bool:
+        """Publish/log a D3net value to a KNX group address.
+
+        The current implementation records the telegram in the KNX monitor log and
+        de-duplicates unchanged values. A real KNXnet/IP write can later be added
+        here without changing the D3net mapping API.
+        """
+        destination = (destination or "").strip()
+        if not destination:
+            return False
+        cache_key = f"{destination}|{dpt}"
+        if not hasattr(self, "_last_published"):
+            self._last_published = {}
+        if not force and self._last_published.get(cache_key) == value:
+            return False
+        self._last_published[cache_key] = value
+        self.add_log("D3net -> KNX", source or self.config.physical_address, destination, "GroupValueWrite", dpt, value)
+        return True
+
     def save_mapping(self, mapping: KnxMapping) -> None:
         self.mappings = [m for m in self.mappings if m.indoor != mapping.indoor]
         self.mappings.append(mapping)

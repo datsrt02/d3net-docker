@@ -67,3 +67,23 @@ For each target, values are decoded from DIII-Net status registers using the fol
 - Fan Status: `32001 bits 12..14` -> `{0:0, 1/2:85, 3:170, 4/5:255}`
 
 The current KNX runtime records these outgoing values in the KNX Monitor Log and de-duplicates unchanged values.
+
+## v16 KNX real bus sender
+
+This version installs `xknx` and changes KNX Runtime from UI-only logs to real KNXnet/IP GroupValueWrite sender.
+
+D3net -> KNX status writes use these DPTs:
+
+- On/Off Status: DPT 1.001
+- Setpoint Status: DPT 9.001
+- Ambient Status: DPT 9.001
+- Mode Status: DPT 5.010 byte value
+- Fan Status: DPT 5.001 percentage byte
+
+After KNX Gateway Config -> Connect, `/api/knx/status` should show:
+
+```json
+"xknx_installed": true,
+"real_knx_enabled": true,
+"connected": true
+```

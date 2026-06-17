@@ -270,6 +270,13 @@ class D3netRuntime:
             "unit_count": len(self.gateway.units or []) if self.gateway else 0,
         }
 
+    def _safe(self, fn, default=None):
+        try:
+            return fn()
+        except Exception as exc:
+            _LOGGER.warning("Decode warning: %s", exc)
+            return default
+
     def units_json(self) -> list[dict[str, Any]]:
         if not self.gateway:
             return []
@@ -277,32 +284,40 @@ class D3netRuntime:
         for unit in self.gateway.units or []:
             st = unit.status
             cap = unit.capabilities
+            mode = self._safe(lambda: st.operating_mode)
+            running = self._safe(lambda: st.operating_current)
+            fan_speed = self._safe(lambda: st.fan_speed)
+            fan_direct = self._safe(lambda: st.fan_direct)
             result.append({
                 "id": unit.unit_id,
                 "index": unit.index,
-                "power": st.power,
-                "mode": st.operating_mode.name,
-                "mode_value": st.operating_mode.value,
-                "running": st.operating_current.name,
-                "fan": st.fan,
-                "fan_speed": st.fan_speed.name,
-                "fan_direction": st.fan_direct.name,
-                "setpoint": st.temp_setpoint,
-                "current_temperature": st.temp_current,
-                "filter_warning": st.filter_warning,
+                "power": self._safe(lambda: st.power, False),
+                "mode": mode.name if mode else "UNKNOWN",
+                "mode_value": mode.value if mode else None,
+                "running": running.name if running else "UNKNOWN",
+                "fan": self._safe(lambda: st.fan, False),
+                "fan_speed": fan_speed.name if fan_speed else "UNKNOWN",
+                "fan_direction": fan_direct.name if fan_direct else "UNKNOWN",
+                "setpoint": self._safe(lambda: st.temp_setpoint),
+                "current_temperature": self._safe(lambda: st.temp_current),
+                "filter_warning": self._safe(lambda: st.filter_warning, False),
                 "capabilities": {
-                    "fan": cap.fan_mode_capable,
-                    "cool": cap.cool_mode_capable,
-                    "heat": cap.heat_mode_capable,
-                    "auto": cap.auto_mode_capable,
-                    "dry": cap.dry_mode_capable,
-                    "fan_speed": cap.fan_speed_capable,
-                    "fan_direction": cap.fan_direct_capable,
-                    "cool_min": cap.cool_setpoint_lowerlimit,
-                    "cool_max": cap.cool_setpoint_upperlimit,
-                    "heat_min": cap.heat_setpoint_lowerlimit,
-                    "heat_max": cap.heat_setpoint_upperlimit,
+                    "fan": self._safe(lambda: cap.fan_mode_capable, False),
+                    "cool": self._safe(lambda: cap.cool_mode_capable, False),
+                    "heat": self._safe(lambda: cap.heat_mode_capable, False),
+                    "auto": self._safe(lambda: cap.auto_mode_capable, False),
+                    "dry": self._safe(lambda: cap.dry_mode_capable, False),
+                    "fan_speed": self._safe(lambda: cap.fan_speed_capable, False),
+                    "fan_direction": self._safe(lambda: cap.fan_direct_capable, False),
+                    "cool_min": self._safe(lambda: cap.cool_setpoint_lowerlimit),
+                    "cool_max": self._safe(lambda: cap.cool_setpoint_upperlimit),
+                    "heat_min": self._safe(lambda: cap.heat_setpoint_lowerlimit),
+                    "heat_max": self._safe(lambda: cap.heat_setpoint_upperlimit),
                 },
+                "raw": {
+                    "capability": list(getattr(cap, "_registers", [])),
+                    "status": list(getattr(st, "_registers", [])),
+                }
             })
         return result
 

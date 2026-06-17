@@ -44,7 +44,7 @@ class InputBase:
 
         if self.COUNT is None:
             raise ValueError("Object register count not set")
-        if register > self.COUNT:
+        if register < 0 or register >= self.COUNT:
             raise ValueError("Reading outside of register buffer")
 
         current = self._registers[register] & mask > 0
@@ -74,7 +74,7 @@ class InputBase:
     def _decode_sint(self, start, length) -> int:
         """Decode a signed int from the registers."""
         result = self._decode_uint(start, length - 1)
-        if self._bit(start + length):
+        if self._bit(start + length - 1):
             result = 0 - result
         return result
 

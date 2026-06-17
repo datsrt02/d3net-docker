@@ -54,6 +54,15 @@ class D3netRuntime:
                     port=config.upstream_port,
                     timeout=10,
                 )
+            # Daikin DIII Modbus uses zero-based register addresses.
+            # Slave/device id must be 1..247; using a register number here can trigger
+            # PyModbus error: "0 <= address < 65535".
+            if not (1 <= int(config.upstream_slave) <= 247):
+                raise ValueError("Slave ID phải nằm trong khoảng 1..247, không nhập địa chỉ thanh ghi như 30001/42001 vào ô này")
+            if not (1 <= int(config.upstream_port) <= 65535):
+                raise ValueError("Gateway Port phải nằm trong khoảng 1..65535, thường là 502")
+            if not (1 <= int(config.virtual_modbus_port) <= 65535):
+                raise ValueError("Virtual Modbus Port phải nằm trong khoảng 1..65535, ví dụ 1502")
             self.gateway = D3netGateway(client, config.upstream_slave)
             self.modbus = VirtualModbusServer(
                 config.virtual_modbus_host,

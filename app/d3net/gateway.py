@@ -117,7 +117,9 @@ class D3netGateway:
         """Load registers and return a decode object. Must already hold a lock and connection."""
         await self._throttle_start()
         response = None
-        address = Decoder.ADDRESS + index * Decoder.COUNT
+        address = int(Decoder.ADDRESS + index * Decoder.COUNT)
+        if address < 0 or address >= 65535:
+            raise ValueError(f"Invalid Modbus register address {address}. Check DIII index/register mapping; Modbus address must be zero-based and < 65535")
         if Decoder.TYPE == D3netRegisterType.Holding:
             response = await self._client.read_holding_registers(
                 address=address,
@@ -148,7 +150,9 @@ class D3netGateway:
             async with self._lock:
                 await self._async_connect()
                 await self._throttle_start()
-                address = decode.ADDRESS + index * decode.COUNT
+                address = int(decode.ADDRESS + index * decode.COUNT)
+                if address < 0 or address >= 65535:
+                    raise ValueError(f"Invalid Modbus holding address {address}. Check DIII index/register mapping; Modbus address must be zero-based and < 65535")
                 await self._client.write_registers(
                     address=address, device_id=self._device_id, values=decode.registers
                 )

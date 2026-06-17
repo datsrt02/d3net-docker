@@ -57,3 +57,8 @@ Giao diện Area/Room/App Device hiện lưu bằng localStorage của trình du
 ## v4 changes
 - Removed duplicated System Setting menu group.
 - Replaced KANONBUS logo text with DATND.
+
+## v5 fix
+- Added strict validation for Gateway Port, Slave ID and Virtual Modbus Port.
+- Added register-address guard in D3netGateway.
+- If API returns `0 <= address < 65535`, check that Gateway Port is `502` and Slave ID is `1..247`; do not enter register numbers such as 30001/42001 in those fields.

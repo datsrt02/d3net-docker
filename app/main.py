@@ -126,3 +126,19 @@ async def api_fan_speed(unit_id: str, body: FanSpeedRequest) -> dict[str, Any]:
 async def api_fan_direction(unit_id: str, body: FanDirectionRequest) -> dict[str, Any]:
     await runtime.set_fan_direction(unit_id, body.direction)
     return {"ok": True}
+
+
+@app.get("/api/debug/system")
+async def api_debug_system() -> dict[str, Any]:
+    try:
+        return await runtime.debug_system_registers()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/debug/unit/{unit_id}")
+async def api_debug_unit(unit_id: str) -> dict[str, Any]:
+    try:
+        return await runtime.debug_unit_registers(unit_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

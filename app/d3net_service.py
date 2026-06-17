@@ -190,6 +190,46 @@ class D3netRuntime:
         await unit.async_update_status()
         await self.sync_all_to_virtual_modbus()
 
+
+    async def debug_system_registers(self) -> dict[str, Any]:
+        if not self.gateway:
+            raise RuntimeError("Gateway not started")
+        decoder = await self.gateway.async_read(SystemStatus, 0)
+        regs = list(decoder._registers)
+        connected = []
+        errors = []
+        for i, ok in enumerate(decoder.units_connected):
+            if ok:
+                connected.append(index_to_unit_id(i))
+        for i, err in enumerate(decoder.units_error):
+            if err:
+                errors.append(index_to_unit_id(i))
+        return {
+            "raw_30001_30009": regs,
+            "ready_30001_bit0": decoder.initialised,
+            "other_diii_device_30001_bit1": decoder.other_device_exists,
+            "connected_units_from_30002_30005": connected,
+            "error_units_from_30006_30009": errors,
+        }
+
+    async def debug_unit_registers(self, unit_id: str) -> dict[str, Any]:
+        if not self.gateway:
+            raise RuntimeError("Gateway not started")
+        index = unit_id_to_index(unit_id)
+        cap = await self.gateway.async_read(UnitCapability, index)
+        st = await self.gateway.async_read(UnitStatus, index)
+        err = await self.gateway.async_read(UnitError, index)
+        return {
+            "unit_id": unit_id,
+            "index": index,
+            "capability_address_zero_based": UnitCapability.ADDRESS + index * UnitCapability.COUNT,
+            "status_address_zero_based": UnitStatus.ADDRESS + index * UnitStatus.COUNT,
+            "error_address_zero_based": UnitError.ADDRESS + index * UnitError.COUNT,
+            "raw_310xx_capability": list(cap._registers),
+            "raw_320xx_status": list(st._registers),
+            "raw_336xx_error": list(err._registers),
+        }
+
     def status_json(self) -> dict[str, Any]:
         return {
             "running": self.gateway is not None,

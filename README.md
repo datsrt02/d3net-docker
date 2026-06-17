@@ -62,3 +62,7 @@ Giao diện Area/Room/App Device hiện lưu bằng localStorage của trình du
 - Added strict validation for Gateway Port, Slave ID and Virtual Modbus Port.
 - Added register-address guard in D3netGateway.
 - If API returns `0 <= address < 65535`, check that Gateway Port is `502` and Slave ID is `1..247`; do not enter register numbers such as 30001/42001 in those fields.
+
+
+## Debug discovery
+Sau khi bấm Start, mở: /api/debug/system để xem raw 30001-30009 gateway trả về. Mở /api/debug/unit/1-00 để xem raw 31001-31003, 32001-32006, 33601-33602.

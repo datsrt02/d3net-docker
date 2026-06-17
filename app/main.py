@@ -252,6 +252,7 @@ async def api_knx_d3net_link_sync(body: D3netKnxLinkRequest) -> dict[str, Any]:
     32003 + index*6: setpoint x10 signed
     32005 + index*6: ambient x10 signed
     """
+    knx_runtime.set_dpt_mapping_from_targets(body.targets)
     unit_rows = await runtime.units_json_async()
     published: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
@@ -288,7 +289,7 @@ async def api_knx_d3net_link_sync(body: D3netKnxLinkRequest) -> dict[str, Any]:
 
         mode_raw = r32002 & 0x000F
         if mode.get("status") and mode_raw in mode_map:
-            values.append(("Mode Status", mode.get("status"), mode_map[mode_raw], "5.010"))
+            values.append(("Mode Status", mode.get("status"), mode_map[mode_raw], "20.105"))
         elif mode.get("status"):
             skipped.append({"target": target.get("target"), "indoor": indoor, "field": "Mode Status", "raw": mode_raw, "reason": "unsupported_mode_value"})
 

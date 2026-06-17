@@ -79,6 +79,7 @@ class KnxRuntime:
         self._xknx_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._last_published: dict[str, Any] = {}
+        self.ga_dpt_map: dict[str, str] = {}
 
     def set_config(self, config: KnxConfig) -> None:
         self.config = config
@@ -183,6 +184,8 @@ class KnxRuntime:
             "xknx_task_running": bool(self._xknx_task is not None and not self._xknx_task.done()),
             "config": self.config.model_dump(),
             "log_count": len(self.logs),
+            "dpt_map_count": len(self.ga_dpt_map),
+            "dpt_map": self.ga_dpt_map,
         }
 
     def add_log(self, service: str, source: str, destination: str, telegram_type: str, dpt: str, value: Any) -> None:
@@ -254,26 +257,71 @@ class KnxRuntime:
         return []
 
     def _decode_dpt9(self, data: list[int]) -> float:
+        """Decode KNX DPT 9.xxx 2-byte float.
+
+        KNX DPT9 format: 1 sign bit, 4 exponent bits, 11-bit mantissa.
+        Earlier versions treated mantissa bit 10 as a sign bit, which produced
+        wrong negative values for normal positive telegrams such as 0x0D72.
+        """
         raw = ((data[0] & 0xFF) << 8) | (data[1] & 0xFF)
+        sign = -1 if (raw & 0x8000) else 1
         exponent = (raw >> 11) & 0x0F
         mantissa = raw & 0x07FF
-        if mantissa & 0x0400:
-            mantissa -= 0x0800
-        return round(0.01 * mantissa * (2 ** exponent), 2)
+        return round(sign * 0.01 * mantissa * (2 ** exponent), 2)
+
+    def _decode_dpt_value(self, dpt: str, data: list[int]) -> Any:
+        dpt = (dpt or "").strip()
+        if not data:
+            return ""
+        if dpt.startswith("1."):
+            return 1 if (data[-1] & 0x01) else 0
+        if dpt.startswith("9.") and len(data) >= 2:
+            return self._decode_dpt9(data[-2:])
+        if dpt.startswith("5.") or dpt.startswith("20."):
+            return data[-1] & 0xFF
+        # Unknown DPT: do not guess. KNX telegrams do not carry DPT metadata.
+        # Return raw byte array so monitor does not show misleading values.
+        return "[" + ",".join(f"0x{x:02X}" for x in data) + "]"
 
     def _decode_bus_value(self, destination: str, payload: Any) -> tuple[str, Any]:
         data = self._extract_payload_bytes(payload)
         if not data:
             return "raw", str(payload) if payload is not None else ""
 
-        # Without an ETS project/group-address DPT table, infer common values:
-        # 2 bytes -> DPT 9.xxx 2-byte float, 1 byte -> DPT 5.xxx byte, 0/1 -> switch.
-        if len(data) >= 2:
-            return "9.001", self._decode_dpt9(data[-2:])
-        byte_value = data[-1] & 0xFF
-        if byte_value in (0, 1):
-            return "1.001", byte_value
-        return "5.xxx", byte_value
+        configured_dpt = self.ga_dpt_map.get(str(destination).strip())
+        if configured_dpt:
+            return configured_dpt, self._decode_dpt_value(configured_dpt, data)
+
+        # KNX telegrams do not include DPT information.
+        # Without a GA -> DPT mapping, auto-detection is only a guess and can be wrong
+        # e.g. every 2-byte telegram may look like DPT9 but actually be another DPT.
+        # Therefore unknown addresses are shown as raw bytes.
+        return "raw", "[" + ",".join(f"0x{x:02X}" for x in data) + "]"
+
+    def set_dpt_mapping_from_targets(self, targets: list[dict[str, Any]]) -> None:
+        """Update GA -> DPT lookup table from Indoor Mapping Address targets.
+
+        This table is used by the live KNX monitor to decode incoming telegrams
+        from the real KNX bus. Without it, 1-bit switch and 1-byte percentage
+        telegrams can be wrongly decoded as DPT 9.001.
+        """
+        dpt_map: dict[str, str] = {}
+        for target in targets or []:
+            mapping = target.get("mapping") or {}
+            sw = mapping.get("switch") or {}
+            sp = mapping.get("setpoint") or {}
+            amb = mapping.get("ambient") or {}
+            mode = mapping.get("mode") or {}
+            fan = mapping.get("fan") or {}
+            for ga in (sw.get("control"), sw.get("status")):
+                if ga: dpt_map[str(ga).strip()] = "1.001"
+            for ga in (sp.get("control"), sp.get("status"), amb.get("status")):
+                if ga: dpt_map[str(ga).strip()] = "9.001"
+            for ga in (mode.get("control"), mode.get("status")):
+                if ga: dpt_map[str(ga).strip()] = "20.105"
+            for ga in (fan.get("control"), fan.get("status")):
+                if ga: dpt_map[str(ga).strip()] = "5.001"
+        self.ga_dpt_map.update(dpt_map)
 
     def _telegram_received(self, telegram: Any) -> None:
         if not self.monitor_enabled:

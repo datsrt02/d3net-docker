@@ -41,7 +41,7 @@
           <li class="active" data-page="dashboard">Monitoring / Control</li>
           <li data-page="module">Module Daikin HBS</li>
           <li data-page="knx">KNX Gateway Config</li>
-          <li data-page="appcfg">App Interface Config</li>
+          <li data-page="appcfg">Indoor Mapping Address</li>
           <li data-page="area">Area / Floor / Room</li>
           <li data-page="registers">Modbus Register Map</li>
           <li data-page="logs">Event Log</li>
@@ -92,16 +92,6 @@
             <div class="status-line" id="knxStatus" style="margin-top:8px">KNX status: chưa kết nối</div>
           </div></div>
 
-          <div class="panel"><h3>KNX Group Address Mapping</h3><div class="panel-body grid">
-            <div class="field"><label>Indoor</label><select id="knx_map_indoor"></select></div>
-            <div class="field"><label>Power GA</label><input id="knx_power_ga" value="1/4/70"></div>
-            <div class="field"><label>Mode GA</label><input id="knx_mode_ga" value="1/4/71"></div>
-            <div class="field"><label>Setpoint GA</label><input id="knx_setpoint_ga" value="1/4/72"></div>
-            <div class="field"><label>Room Temp GA</label><input id="knx_temp_ga" value="1/4/73"></div>
-            <div class="field"><label>Fan GA</label><input id="knx_fan_ga" value="1/4/74"></div>
-          </div><div class="panel-body"><button class="btn primary" onclick="saveKnxMapping()">Save Mapping</button></div>
-          <div class="panel-body"><table><thead><tr><th>Indoor</th><th>Power</th><th>Mode</th><th>Setpoint</th><th>Temp</th><th>Fan</th></tr></thead><tbody id="knxMappingTable"></tbody></table></div></div>
-
           <div class="panel"><h3>KNX Monitor Log</h3><div class="panel-body">
             <div class="status-line">
               <span>GA Filter:</span><input id="knx_ga_filter" class="mono" style="height:28px;border:1px solid #aebdcc;padding:4px" placeholder="VD: 1/4/*">
@@ -115,21 +105,49 @@
         </section>
 
         <section id="appcfg" class="page">
-          <div class="caption">3. Cấu hình giao diện App</div>
-          <div class="split">
-            <div class="panel"><h3>Object / Device Config</h3><div class="panel-body grid" style="grid-template-columns:repeat(2,minmax(160px,1fr))">
-              <div class="field"><label>Target Name</label><input id="targetName" placeholder="VD: Living Room AC"></div>
-              <div class="field"><label>Target Type</label><select id="targetType"><option>Air Conditioner</option><option>Lighting</option><option>Scene</option><option>Sensor</option></select></div>
-              <div class="field"><label>Object Name</label><input id="objectName" placeholder="AC_LivingRoom"></div>
-              <div class="field"><label>Bind Indoor</label><select id="bindIndoor"></select></div>
-              <div class="field"><label>Icon</label><input id="iconValue" value="❄️"></div>
-              <div class="field"><label>Area / Room</label><select id="bindRoom"></select></div>
-              <div class="field"><label>Temperature Mode</label><select><option>Cooling / Heating</option><option>Cooling only</option><option>Fan only</option></select></div>
-              <div class="field"><label>Show in App</label><select><option>Yes</option><option>No</option></select></div>
-            </div><div class="panel-body"><button class="btn" onclick="showIcons()">Select Icon</button><button class="btn primary" onclick="addDeviceConfig()">Save Device</button></div></div>
-            <div class="panel"><h3>Icon List</h3><div class="panel-body"><div class="icon-grid" id="iconGrid"></div><div class="footer-note">Tương tự video: chọn icon, đặt tên target, bind địa chỉ module/indoor rồi lưu cấu hình hiển thị app.</div></div></div>
-          </div>
-          <div class="panel"><h3>Configured App Devices</h3><div class="panel-body"><table><thead><tr><th>Icon</th><th>Target</th><th>Object</th><th>Room</th><th>Indoor</th><th>Type</th><th>Action</th></tr></thead><tbody id="deviceConfigTable"></tbody></table></div></div>
+          <div class="caption">3. Indoor Mapping Address</div>
+          <div class="panel"><h3>Create Indoor Target</h3><div class="panel-body grid">
+            <div class="field"><label>Target Name</label><input id="targetName" placeholder="VD: Living Room AC"></div>
+            <div class="field"><label>Target Type</label><select id="targetType"><option>Air Condition</option><option>Heater</option></select></div>
+            <div class="field"><label>Bind Indoor</label><select id="bindIndoor"></select></div>
+            <div class="field"><label>Area / Room</label><select id="bindRoom"></select></div>
+          </div><div class="panel-body"><button class="btn primary" onclick="addDeviceConfig()">Save Target</button></div></div>
+
+          <div class="panel"><h3>Configured App Devices</h3><div class="panel-body"><table><thead><tr><th>Target Name</th><th>Target Type</th><th>Bind Indoor</th><th>Area / Room</th><th>Action</th></tr></thead><tbody id="deviceConfigTable"></tbody></table></div></div>
+
+          <div class="panel" id="modifyPanel" style="display:none"><h3>Modify Target: <span id="modifyTitle"></span></h3><div class="panel-body">
+            <input type="hidden" id="modifyIndex" value="-1">
+            <div class="panel"><h3>ACSwitch</h3><div class="panel-body grid">
+              <div class="field"><label>Name</label><input id="sw_name" placeholder="VD: Power"></div>
+              <div class="field"><label>On/off Control</label><input id="sw_control" placeholder="VD: 1/4/70"></div>
+              <div class="field"><label>On/off Status</label><input id="sw_status" placeholder="VD: 1/4/71"></div>
+            </div><div class="panel-body"><button class="btn primary" onclick="updateDeviceSection('switch')">Update</button></div></div>
+
+            <div class="panel"><h3>ACTempSetpoint</h3><div class="panel-body grid">
+              <div class="field"><label>Name</label><input id="sp_name" placeholder="VD: Setpoint"></div>
+              <div class="field"><label>Setpoint Control</label><input id="sp_control" placeholder="VD: 1/4/72"></div>
+              <div class="field"><label>Setpoint Status</label><input id="sp_status" placeholder="VD: 1/4/73"></div>
+              <div class="field"><label>Setpoint Min</label><input id="sp_min" type="number" step="0.5" value="16"></div>
+              <div class="field"><label>Setpoint Max</label><input id="sp_max" type="number" step="0.5" value="32"></div>
+            </div><div class="panel-body"><button class="btn primary" onclick="updateDeviceSection('setpoint')">Update</button></div></div>
+
+            <div class="panel"><h3>ACTempAmbient</h3><div class="panel-body grid">
+              <div class="field"><label>Name</label><input id="amb_name" placeholder="VD: Room Temperature"></div>
+              <div class="field"><label>Status Ambient</label><input id="amb_status" placeholder="VD: 1/4/74"></div>
+            </div><div class="panel-body"><button class="btn primary" onclick="updateDeviceSection('ambient')">Update</button></div></div>
+
+            <div class="panel"><h3>ACMode</h3><div class="panel-body grid">
+              <div class="field"><label>Name</label><input id="mode_name" placeholder="VD: Mode"></div>
+              <div class="field"><label>Mode Control</label><input id="mode_control" placeholder="VD: 1/4/75"></div>
+              <div class="field"><label>Mode Status</label><input id="mode_status" placeholder="VD: 1/4/76"></div>
+            </div><div class="panel-body"><button class="btn primary" onclick="updateDeviceSection('mode')">Update</button></div></div>
+
+            <div class="panel"><h3>ACFan</h3><div class="panel-body grid">
+              <div class="field"><label>Name</label><input id="fan_name" placeholder="VD: Fan Speed"></div>
+              <div class="field"><label>Fan Control</label><input id="fan_control" placeholder="VD: 1/4/77"></div>
+              <div class="field"><label>Fan Status</label><input id="fan_status" placeholder="VD: 1/4/78"></div>
+            </div><div class="panel-body"><button class="btn primary" onclick="updateDeviceSection('fan')">Update</button></div></div>
+          </div></div>
         </section>
 
         <section id="area" class="page">
@@ -174,7 +192,7 @@ const icons = ['❄️','🔥','💨','🌡️','🏠','🛏️','🛋️','🍽
 let units=[];let rooms=JSON.parse(localStorage.getItem('rooms')||'[]');let devices=JSON.parse(localStorage.getItem('devices')||'[]');
 document.getElementById('upstream_protocol').value='{{ config.upstream_protocol }}';
 document.getElementById('knx_protocol').value='{{ config.knx_protocol }}';
-function doLogin(){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';refreshAll();renderLocal();refreshKnxStatus();refreshKnxMappings();refreshKnxLogs();}
+function doLogin(){document.getElementById('login').style.display='none';document.getElementById('app').style.display='block';refreshAll();renderLocal();refreshKnxStatus();refreshKnxLogs();}
 function log(s){const el=document.getElementById('log');const t=new Date().toLocaleTimeString();el.innerHTML+=`[${t}] ${s}<br>`;el.scrollTop=el.scrollHeight}
 function clearLog(){document.getElementById('log').innerHTML=''}
 document.querySelectorAll('.tree li[data-page]').forEach(li=>li.onclick=()=>{document.querySelectorAll('.tree li').forEach(x=>x.classList.remove('active'));li.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(li.dataset.page).classList.add('active')});
@@ -186,18 +204,21 @@ async function stopServer(){try{await api('/api/stop',{method:'POST'});log('Stop
 async function pollOnce(){try{await api('/api/poll',{method:'POST'});log('Manual poll completed')}catch(e){log('ERROR poll: '+e.message)}await refreshAll()}
 function fmt(v){return (v===null||v===undefined)?'-':v}
 async function refreshAll(){try{const st=await api('/api/status');document.getElementById('statusLine').innerHTML=`<span><i class="dot ${st.running?'ok':'bad'}"></i>Running: <b>${st.running}</b></span><span><i class="dot ${st.connected?'ok':'bad'}"></i>Connected: <b>${st.connected}</b></span><span>Units: <b>${st.unit_count}</b></span>${st.last_error?'<span style="color:var(--bad)">'+st.last_error+'</span>':''}`;units=await api('/api/units');renderUnits()}catch(e){document.getElementById('statusLine').innerHTML='<span style="color:var(--bad)">'+e.message+'</span>';log('ERROR refresh: '+e.message)}}
-function renderUnits(){const table=document.getElementById('unitTable');const tiles=document.getElementById('unitTiles');const tree=document.getElementById('deviceTree');const bind=document.getElementById('bindIndoor');const kbind=document.getElementById('knx_map_indoor');table.innerHTML='';tiles.innerHTML='';tree.innerHTML='';bind.innerHTML='';if(kbind)kbind.innerHTML='';if(!units.length){tiles.innerHTML='<div class="panel"><div class="panel-body muted">Chưa có indoor. Vào Module Daikin HBS → Scan / Connect để đọc địa chỉ dàn lạnh.</div></div>';tree.innerHTML='<li class="muted">No discovered indoor</li>';bind.innerHTML='<option>1-00</option>';if(kbind)kbind.innerHTML='<option>1-00</option>';return}for(const u of units){table.innerHTML+=`<tr><td>${u.id}</td><td>${u.index}</td><td>${u.power?'On':'Off'}</td><td>${u.mode}</td><td>${u.fan_speed}/${u.fan_direction}</td><td>${fmt(u.setpoint)}</td><td>${fmt(u.current_temperature)}</td><td>${Object.entries(u.capabilities||{}).filter(([k,v])=>v===true).map(([k])=>k).join(', ')}</td></tr>`;tree.innerHTML+=`<li data-page="dashboard">Indoor ${u.id}<span class="sub">${u.power?'Online / ON':'Online / OFF'}</span></li>`;bind.innerHTML+=`<option>${u.id}</option>`;if(kbind)kbind.innerHTML+=`<option>${u.id}</option>`;tiles.innerHTML+=`<div class="tile"><div class="tile-head"><b>Indoor ${u.id}</b><span class="badge ${u.power?'':'off'}">${u.power?'ON':'OFF'}</span></div><div class="tile-body"><div class="thermo"><div class="thermo-inner"><span>Room</span><b>${fmt(u.current_temperature)}</b><small>°C</small></div></div><div style="text-align:center;margin-top:8px"><span class="pill">${u.mode}</span><span class="pill">${u.fan_speed}</span><span class="pill">Set ${fmt(u.setpoint)}°C</span></div><div class="ctrl-row"><button class="btn ${u.power?'danger':'green'}" onclick="setPower('${u.id}',${!u.power})">${u.power?'OFF':'ON'}</button><select id="mode_${u.id}"><option>COOL</option><option>HEAT</option><option>AUTO</option><option>DRY</option><option>FAN</option></select><button class="btn" onclick="setMode('${u.id}')">Mode</button><input id="sp_${u.id}" type="number" step="0.5" value="${fmt(u.setpoint)}"><button class="btn" onclick="setSetpoint('${u.id}')">Set</button></div></div></div>`}renderLocal()}
+function renderUnits(){const table=document.getElementById('unitTable');const tiles=document.getElementById('unitTiles');const tree=document.getElementById('deviceTree');const bind=document.getElementById('bindIndoor');table.innerHTML='';tiles.innerHTML='';tree.innerHTML='';bind.innerHTML='';if(!units.length){tiles.innerHTML='<div class="panel"><div class="panel-body muted">Chưa có indoor. Vào Module Daikin HBS → Scan / Connect để đọc địa chỉ dàn lạnh.</div></div>';tree.innerHTML='<li class="muted">No discovered indoor</li>';bind.innerHTML='<option>1-00</option>';return}for(const u of units){table.innerHTML+=`<tr><td>${u.id}</td><td>${u.index}</td><td>${u.power?'On':'Off'}</td><td>${u.mode}</td><td>${u.fan_speed}/${u.fan_direction}</td><td>${fmt(u.setpoint)}</td><td>${fmt(u.current_temperature)}</td><td>${Object.entries(u.capabilities||{}).filter(([k,v])=>v===true).map(([k])=>k).join(', ')}</td></tr>`;tree.innerHTML+=`<li data-page="dashboard">Indoor ${u.id}<span class="sub">${u.power?'Online / ON':'Online / OFF'}</span></li>`;bind.innerHTML+=`<option>${u.id}</option>`;tiles.innerHTML+=`<div class="tile"><div class="tile-head"><b>Indoor ${u.id}</b><span class="badge ${u.power?'':'off'}">${u.power?'ON':'OFF'}</span></div><div class="tile-body"><div class="thermo"><div class="thermo-inner"><span>Room</span><b>${fmt(u.current_temperature)}</b><small>°C</small></div></div><div style="text-align:center;margin-top:8px"><span class="pill">${u.mode}</span><span class="pill">${u.fan_speed}</span><span class="pill">Set ${fmt(u.setpoint)}°C</span></div><div class="ctrl-row"><button class="btn ${u.power?'danger':'green'}" onclick="setPower('${u.id}',${!u.power})">${u.power?'OFF':'ON'}</button><select id="mode_${u.id}"><option>COOL</option><option>HEAT</option><option>AUTO</option><option>DRY</option><option>FAN</option></select><button class="btn" onclick="setMode('${u.id}')">Mode</button><input id="sp_${u.id}" type="number" step="0.5" value="${fmt(u.setpoint)}"><button class="btn" onclick="setSetpoint('${u.id}')">Set</button></div></div></div>`}renderLocal()}
 async function setPower(id,p){try{await api(`/api/unit/${id}/power`,{method:'POST',body:JSON.stringify({power:p})});log(`Set ${id} power ${p}`)}catch(e){log('ERROR power: '+e.message)}await refreshAll()}
 async function setMode(id){const mode=document.getElementById('mode_'+id).value;try{await api(`/api/unit/${id}/mode`,{method:'POST',body:JSON.stringify({mode})});log(`Set ${id} mode ${mode}`)}catch(e){log('ERROR mode: '+e.message)}await refreshAll()}
 async function setSetpoint(id){const v=Number(document.getElementById('sp_'+id).value);try{await api(`/api/unit/${id}/setpoint`,{method:'POST',body:JSON.stringify({setpoint:v})});log(`Set ${id} setpoint ${v}`)}catch(e){log('ERROR setpoint: '+e.message)}await refreshAll()}
 async function groupPower(p){for(const u of units){await setPower(u.id,p)}}
-function showIcons(){document.querySelector('.tree li[data-page="appcfg"]').click();document.getElementById('iconGrid').scrollIntoView({behavior:'smooth'})}
-function renderIcons(){const g=document.getElementById('iconGrid');g.innerHTML='';icons.forEach(ic=>{const d=document.createElement('div');d.className='icon';d.textContent=ic;d.onclick=()=>{document.getElementById('iconValue').value=ic;document.querySelectorAll('.icon').forEach(x=>x.classList.remove('selected'));d.classList.add('selected')};g.appendChild(d)})}
+function showIcons(){}
+function renderIcons(){}
 function addRoom(){const r={area:areaName.value||'Default Area',floor:floorName.value||'Floor 1',room:roomName.value||'Room'};rooms.push(r);localStorage.setItem('rooms',JSON.stringify(rooms));log('Added room '+r.room);renderLocal()}
-function addDeviceConfig(){const d={icon:iconValue.value,target:targetName.value||'Air Conditioner',object:objectName.value||'AC_Object',room:bindRoom.value||'-',indoor:bindIndoor.value||'1-00',type:targetType.value};devices.push(d);localStorage.setItem('devices',JSON.stringify(devices));log('Saved app device '+d.target);renderLocal()}
+function emptyMapping(){return{switch:{name:'ACSwitch',control:'',status:''},setpoint:{name:'ACTempSetpoint',control:'',status:'',min:16,max:32},ambient:{name:'ACTempAmbient',status:''},mode:{name:'ACMode',control:'',status:''},fan:{name:'ACFan',control:'',status:''}}}
+function addDeviceConfig(){const d={target:targetName.value||'Air Conditioner',type:targetType.value,room:bindRoom.value||'-',indoor:bindIndoor.value||'1-00',mapping:emptyMapping()};devices.push(d);localStorage.setItem('devices',JSON.stringify(devices));log('Saved indoor target '+d.target);renderLocal()}
 function delRoom(i){rooms.splice(i,1);localStorage.setItem('rooms',JSON.stringify(rooms));renderLocal()}
-function delDevice(i){devices.splice(i,1);localStorage.setItem('devices',JSON.stringify(devices));renderLocal()}
-function renderLocal(){renderIcons();const rt=document.getElementById('roomTable');const br=document.getElementById('bindRoom');rt.innerHTML='';br.innerHTML='';rooms.forEach((r,i)=>{rt.innerHTML+=`<tr><td>${r.area}</td><td>${r.floor}</td><td>${r.room}</td><td><button class="btn danger" onclick="delRoom(${i})">Delete</button></td></tr>`;br.innerHTML+=`<option>${r.area} / ${r.floor} / ${r.room}</option>`});if(!rooms.length){br.innerHTML='<option>Default / Floor 1 / Room</option>'}const dt=document.getElementById('deviceConfigTable');dt.innerHTML='';devices.forEach((d,i)=>dt.innerHTML+=`<tr><td style="font-size:20px">${d.icon}</td><td>${d.target}</td><td>${d.object}</td><td>${d.room}</td><td>${d.indoor}</td><td>${d.type}</td><td><button class="btn danger" onclick="delDevice(${i})">Delete</button></td></tr>`)}
+function delDevice(i){devices.splice(i,1);localStorage.setItem('devices',JSON.stringify(devices));document.getElementById('modifyPanel').style.display='none';renderLocal()}
+function renderLocal(){const rt=document.getElementById('roomTable');const br=document.getElementById('bindRoom');rt.innerHTML='';br.innerHTML='';rooms.forEach((r,i)=>{rt.innerHTML+=`<tr><td>${r.area}</td><td>${r.floor}</td><td>${r.room}</td><td><button class="btn danger" onclick="delRoom(${i})">Delete</button></td></tr>`;br.innerHTML+=`<option>${r.area} / ${r.floor} / ${r.room}</option>`});if(!rooms.length){br.innerHTML='<option>Default / Floor 1 / Room</option>'}const dt=document.getElementById('deviceConfigTable');dt.innerHTML='';devices.forEach((d,i)=>dt.innerHTML+=`<tr><td>${d.target}</td><td>${d.type}</td><td>${d.indoor}</td><td>${d.room}</td><td><button class="btn blue" onclick="modifyDevice(${i})">Modify</button> <button class="btn danger" onclick="delDevice(${i})">Delete</button></td></tr>`) }
+function modifyDevice(i){const d=devices[i];if(!d.mapping)d.mapping=emptyMapping();document.getElementById('modifyIndex').value=i;document.getElementById('modifyTitle').textContent=d.target+' / '+d.indoor;document.getElementById('modifyPanel').style.display='block';sw_name.value=d.mapping.switch?.name||'ACSwitch';sw_control.value=d.mapping.switch?.control||'';sw_status.value=d.mapping.switch?.status||'';sp_name.value=d.mapping.setpoint?.name||'ACTempSetpoint';sp_control.value=d.mapping.setpoint?.control||'';sp_status.value=d.mapping.setpoint?.status||'';sp_min.value=d.mapping.setpoint?.min??16;sp_max.value=d.mapping.setpoint?.max??32;amb_name.value=d.mapping.ambient?.name||'ACTempAmbient';amb_status.value=d.mapping.ambient?.status||'';mode_name.value=d.mapping.mode?.name||'ACMode';mode_control.value=d.mapping.mode?.control||'';mode_status.value=d.mapping.mode?.status||'';fan_name.value=d.mapping.fan?.name||'ACFan';fan_control.value=d.mapping.fan?.control||'';fan_status.value=d.mapping.fan?.status||'';document.getElementById('modifyPanel').scrollIntoView({behavior:'smooth'})}
+function updateDeviceSection(section){const i=Number(document.getElementById('modifyIndex').value);if(i<0||!devices[i])return;const d=devices[i];if(!d.mapping)d.mapping=emptyMapping();if(section==='switch')d.mapping.switch={name:sw_name.value,control:sw_control.value,status:sw_status.value};if(section==='setpoint')d.mapping.setpoint={name:sp_name.value,control:sp_control.value,status:sp_status.value,min:Number(sp_min.value),max:Number(sp_max.value)};if(section==='ambient')d.mapping.ambient={name:amb_name.value,status:amb_status.value};if(section==='mode')d.mapping.mode={name:mode_name.value,control:mode_control.value,status:mode_status.value};if(section==='fan')d.mapping.fan={name:fan_name.value,control:fan_control.value,status:fan_status.value};localStorage.setItem('devices',JSON.stringify(devices));log('Updated '+section+' mapping for '+d.target);renderLocal()}
 
 function knxPayload(){return{gateway_name:knx_gateway_name.value||'KNX Main Gateway',gateway_ip:knx_gateway_ip.value,gateway_port:Number(knx_gateway_port.value),physical_address:knx_physical_address.value||'1.1.10',protocol:knx_protocol.value}}
 async function saveKnxConfig(){try{await api('/api/knx/config',{method:'POST',body:JSON.stringify(knxPayload())});const s=document.getElementById('knxSaved');s.style.display='inline';setTimeout(()=>s.style.display='none',3000);log('Saved KNX gateway configuration');await refreshKnxStatus()}catch(e){log('ERROR KNX save: '+e.message)}}
@@ -207,8 +228,6 @@ async function toggleKnxMonitor(){try{const enabled=document.getElementById('knx
 async function refreshKnxStatus(){try{const st=await api('/api/knx/status');document.getElementById('knxStatus').innerHTML=`<span><i class="dot ${st.connected?'ok':'bad'}"></i>Connected: <b>${st.connected}</b></span><span>Gateway: <b>${st.config.gateway_name}</b></span><span>IP: <b>${st.config.gateway_ip}:${st.config.gateway_port}</b></span><span>PA: <b>${st.config.physical_address}</b></span><span>Protocol: <b>${st.config.protocol}</b></span>`;document.getElementById('knx_monitor').checked=!!st.monitor_enabled;document.getElementById('knxMonitorText').textContent=st.monitor_enabled?'ON':'OFF'}catch(e){log('ERROR KNX status: '+e.message)}}
 async function refreshKnxLogs(){try{const f=document.getElementById('knx_ga_filter').value.trim();const rows=await api('/api/knx/logs?limit=100'+(f?'&ga_filter='+encodeURIComponent(f):''));const tb=document.getElementById('knxLogTable');tb.innerHTML='';rows.forEach((r,i)=>tb.innerHTML+=`<tr><td>${rows.length-i}</td><td>${r.time}</td><td>${r.service}</td><td>${r.flags||''}</td><td>${r.prio||''}</td><td>${r.source_address}</td><td>${r.source_name||''}</td><td>${r.destination_address}</td><td>${r.destination_route||''}</td><td>${r.type}</td><td>${r.dpt}</td><td>${r.value}</td></tr>`)}catch(e){log('ERROR KNX log: '+e.message)}}
 async function clearKnxLogs(){await api('/api/knx/logs/clear',{method:'POST'});await refreshKnxLogs()}
-async function saveKnxMapping(){try{const m={indoor:knx_map_indoor.value||'1-00',power_ga:knx_power_ga.value,mode_ga:knx_mode_ga.value,setpoint_ga:knx_setpoint_ga.value,temp_ga:knx_temp_ga.value,fan_ga:knx_fan_ga.value};await api('/api/knx/mappings',{method:'POST',body:JSON.stringify(m)});log('Saved KNX mapping '+m.indoor);await refreshKnxMappings()}catch(e){log('ERROR KNX mapping: '+e.message)}}
-async function refreshKnxMappings(){try{const rows=await api('/api/knx/mappings');const tb=document.getElementById('knxMappingTable');tb.innerHTML='';rows.forEach(r=>tb.innerHTML+=`<tr><td>${r.indoor}</td><td>${r.power_ga}</td><td>${r.mode_ga}</td><td>${r.setpoint_ga}</td><td>${r.temp_ga}</td><td>${r.fan_ga}</td></tr>`)}catch(e){log('ERROR KNX mappings: '+e.message)}}
 async function exportKnxCsv(){const rows=await api('/api/knx/logs?limit=500');let csv='Time,Service,Source Address,Destination Address,Type,DPT,Value\n';rows.forEach(r=>csv+=`"${r.time}","${r.service}","${r.source_address}","${r.destination_address}","${r.type}","${r.dpt}","${r.value}"\n`);const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='knx-monitor-log.csv';a.click()}
 
 setInterval(()=>{if(document.getElementById('app').style.display==='block'){refreshAll();refreshKnxStatus();refreshKnxLogs();}},10000);

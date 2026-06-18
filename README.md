@@ -21,3 +21,6 @@ docker compose up -d
 Open: `http://SERVER_IP:8080`
 
 Default login: `admin / admin`
+
+## v26
+- Fixed login button issue caused by DOM id/function name collision (`login`).

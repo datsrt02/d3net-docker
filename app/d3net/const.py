@@ -1,196 +1,69 @@
-"""Constants for the Daikin DIII-NET Modbus integration."""
+"""Standalone DIII-Net constants for DATND Docker app.
 
-from homeassistant.components.climate import (
-    FAN_AUTO,
-    FAN_HIGH,
-    FAN_LOW,
-    FAN_MEDIUM,
-    FAN_MIDDLE,
-    FAN_OFF,
-    FAN_ON,
-    FAN_TOP,
-    SWING_OFF,
-    SWING_ON,
-    HVACAction,
-    HVACMode,
-)
+This file intentionally has no Home Assistant dependency.
+"""
 
-from .d3net.encoding import (
-    D3netFanDirection,
-    D3netFanDirectionCapability,
-    D3netFanSpeed,
-    D3netFanSpeedCapability,
-    D3netOperationMode,
-)
+from enum import Enum
 
-DOMAIN = "daikin_d3net"
-MANUFACTURER = "Daikin"
-MODEL = "DIII-Net Modbus"
 
-CONF_SLAVE = "d3net_slave"
-CONF_PROTOCOL = "modbus_protocol"
+class D3netOperationMode(Enum):
+    """Unit Operating Modes."""
 
-PROTOCOL_TCP = "tcp"
-PROTOCOL_RTU_OVER_TCP = "rtu_over_tcp"
+    FAN = 0
+    HEAT = 1
+    COOL = 2
+    AUTO = 3
+    VENT = 4
+    UNDEFINED = 5
+    SLAVE = 6
+    DRY = 7
 
-DEFAULT_NAME = "Daikin"
-DEFAULT_PORT = 502
-DEFAULT_SLAVE = 1
 
-UPDATE_INTERVAL = 10
+class D3netFanSpeedCapability(Enum):
+    """Unit Fan Speed Capability."""
 
-OPERATION_MODE_ICONS = {
-    D3netOperationMode.FAN: "mdi:fan",
-    D3netOperationMode.HEAT: "mdi:fire",
-    D3netOperationMode.COOL: "mdi:snowflake",
-    D3netOperationMode.AUTO: "mdi:thermostat-auto",
-    D3netOperationMode.VENT: "mdi:weather-windy",
-    D3netOperationMode.UNDEFINED: "mdi:hvac",
-    D3netOperationMode.SLAVE: "mdi:flowchart",
-    D3netOperationMode.DRY: "mdi:water-percent",
-}
+    Fixed = 1
+    Step2 = 2
+    Step3 = 3
+    Step4 = 4
+    Step5 = 5
 
-MODE_DAIKIN_HA = {
-    D3netOperationMode.AUTO: HVACMode.AUTO,
-    D3netOperationMode.COOL: HVACMode.COOL,
-    D3netOperationMode.DRY: HVACMode.DRY,
-    D3netOperationMode.FAN: HVACMode.FAN_ONLY,
-    D3netOperationMode.HEAT: HVACMode.HEAT,
-}
 
-MODE_HA_DAIKIN = {
-    HVACMode.AUTO: D3netOperationMode.AUTO,
-    HVACMode.COOL: D3netOperationMode.COOL,
-    HVACMode.DRY: D3netOperationMode.DRY,
-    HVACMode.FAN_ONLY: D3netOperationMode.FAN,
-    HVACMode.HEAT: D3netOperationMode.HEAT,
-}
+class D3netFanDirectionCapability(Enum):
+    """Unit Fan Direction Capability."""
 
-MODE_HA_TEXT = {
-    HVACMode.AUTO: "Auto",
-    HVACMode.COOL: "Cool",
-    HVACMode.DRY: "Dry",
-    HVACMode.FAN_ONLY: "Fan",
-    HVACMode.HEAT: "Heat",
-    # HVACMode.OFF: "Off",
-}
+    Fixed = 1
+    Step2 = 2
+    Step3 = 3
+    Step4 = 4
+    Step5 = 5
 
-MODE_TEXT_HA = {
-    "Auto": HVACMode.AUTO,
-    "Cool": HVACMode.COOL,
-    "Dry": HVACMode.DRY,
-    "Fan": HVACMode.FAN_ONLY,
-    "Heat": HVACMode.HEAT,
-    # "Off": HVACMode.OFF,
-}
 
-ACTION_DAIKIN_HA = {
-    D3netOperationMode.HEAT: HVACAction.HEATING,
-    D3netOperationMode.COOL: HVACAction.COOLING,
-    D3netOperationMode.FAN: HVACAction.FAN,
-}
+class D3netFanSpeed(Enum):
+    """Unit Fan Speed."""
 
-FANSPEEDCAPABILITY_DAIKIN_HA = {
-    D3netFanSpeedCapability.Fixed: [FAN_ON, FAN_OFF, FAN_HIGH],
-    D3netFanSpeedCapability.Step2: [FAN_ON, FAN_OFF, FAN_AUTO, FAN_LOW, FAN_TOP],
-    D3netFanSpeedCapability.Step3: [
-        FAN_ON,
-        FAN_OFF,
-        FAN_AUTO,
-        FAN_LOW,
-        FAN_MIDDLE,
-        FAN_TOP,
-    ],
-    D3netFanSpeedCapability.Step4: [
-        FAN_ON,
-        FAN_OFF,
-        FAN_AUTO,
-        FAN_LOW,
-        FAN_MIDDLE,
-        FAN_HIGH,
-    ],
-    D3netFanSpeedCapability.Step5: [
-        FAN_ON,
-        FAN_OFF,
-        FAN_AUTO,
-        FAN_LOW,
-        FAN_MEDIUM,
-        FAN_MIDDLE,
-        FAN_HIGH,
-        FAN_TOP,
-    ],
-}
+    Auto = 0
+    Low = 1
+    LowMedium = 2
+    Medium = 3
+    HighMedium = 4
+    High = 5
 
-FANDIRECTIONCAPABILITY_DAIKIN_HA = {
-    D3netFanDirectionCapability.Step2: [
-        D3netFanDirection.Swing,
-        D3netFanDirection.Stop,
-        D3netFanDirection.P0,
-        D3netFanDirection.P1,
-    ],
-    D3netFanDirectionCapability.Step3: [
-        D3netFanDirection.Swing,
-        D3netFanDirection.Stop,
-        D3netFanDirection.P0,
-        D3netFanDirection.P1,
-        D3netFanDirection.P2,
-    ],
-    D3netFanDirectionCapability.Step4: [
-        D3netFanDirection.Swing,
-        D3netFanDirection.Stop,
-        D3netFanDirection.P0,
-        D3netFanDirection.P1,
-        D3netFanDirection.P2,
-        D3netFanDirection.P3,
-    ],
-    D3netFanDirectionCapability.Step5: [
-        D3netFanDirection.Swing,
-        D3netFanDirection.Stop,
-        D3netFanDirection.P0,
-        D3netFanDirection.P1,
-        D3netFanDirection.P2,
-        D3netFanDirection.P3,
-        D3netFanDirection.P4,
-    ],
-}
 
-SWINGMODECAPABILITY_DAIKIN_HA = {
-    D3netFanDirectionCapability.Fixed: [SWING_OFF],
-    D3netFanDirectionCapability.Step2: [SWING_ON, SWING_OFF],
-    D3netFanDirectionCapability.Step3: [SWING_ON, SWING_OFF],
-    D3netFanDirectionCapability.Step4: [SWING_ON, SWING_OFF],
-    D3netFanDirectionCapability.Step5: [SWING_ON, SWING_OFF],
-}
+class D3netFanDirection(Enum):
+    """Unit Fan Direction."""
 
-FANSPEED_DAIKIN_HA = {
-    D3netFanSpeed.Auto: FAN_AUTO,
-    D3netFanSpeed.Low: FAN_LOW,
-    D3netFanSpeed.LowMedium: FAN_MEDIUM,
-    D3netFanSpeed.Medium: FAN_MIDDLE,
-    D3netFanSpeed.HighMedium: FAN_HIGH,
-    D3netFanSpeed.High: FAN_TOP,
-}
+    P0 = 0
+    P1 = 1
+    P2 = 2
+    P3 = 3
+    P4 = 4
+    Stop = 6
+    Swing = 7
 
-FANSPEED_HA_DAIKIN = {
-    FAN_AUTO: D3netFanSpeed.Auto,
-    FAN_LOW: D3netFanSpeed.Low,
-    FAN_MEDIUM: D3netFanSpeed.LowMedium,
-    FAN_MIDDLE: D3netFanSpeed.Medium,
-    FAN_HIGH: D3netFanSpeed.HighMedium,
-    FAN_TOP: D3netFanSpeed.High,
-}
 
-SWINGMODE_DAIKIN_HA = {
-    D3netFanDirection.Swing: SWING_ON,
-    D3netFanDirection.Stop: SWING_OFF,
-    D3netFanDirection.P0: SWING_OFF,
-    D3netFanDirection.P1: SWING_OFF,
-    D3netFanDirection.P2: SWING_OFF,
-    D3netFanDirection.P3: SWING_OFF,
-    D3netFanDirection.P4: SWING_OFF,
-}
+class D3netRegisterType(Enum):
+    """Type of Modbus register."""
 
-SWINGMODE_HA_DAIKIN = {
-    SWING_ON: D3netFanDirection.Swing,
-    SWING_OFF: D3netFanDirection.Stop,
-}
+    Input = "input"
+    Holding = "holding"

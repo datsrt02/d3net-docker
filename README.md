@@ -46,3 +46,8 @@ Expected:
   - ACMode Mode Control DPT 20.105 -> 42002 bits 0..3
   - ACFan Fan Control DPT 5.001 -> 42001 bits 12..14
 - Control telegrams are processed even when Monitor Log is disabled.
+
+## v23 changes
+- Renamed Module Daikin HBS to Modbus Gateway Config.
+- Added Auto Refresh options: 3s and 5s.
+- Indoor Mapping Address now hides already-bound indoor units from the Create Indoor Target dropdown.

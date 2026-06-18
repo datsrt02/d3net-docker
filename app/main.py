@@ -2,12 +2,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from .config import AppConfig, load_config, save_config
 from .d3net_service import D3netRuntime
 from .knx_service import KnxRuntime, KnxConfig, MonitorRequest
+from .auth_service import verify_password, change_password, create_session, get_session_user, delete_session
 
 app = FastAPI(title='DATND Daikin D3net KNX Gateway')
 templates = Jinja2Templates(directory=str(Path(__file__).parent / 'templates'))
@@ -18,6 +19,41 @@ class ModeRequest(BaseModel): mode: str
 class SetpointRequest(BaseModel): setpoint: float
 class FanDirectionRequest(BaseModel): direction: str
 class D3netKnxLinkRequest(BaseModel): targets: list[dict[str, Any]] = []; force: bool = False
+class LoginRequest(BaseModel): username: str; password: str
+class ChangePasswordRequest(BaseModel): current_password: str; new_password: str; confirm_password: str
+
+@app.post('/api/auth/login')
+async def auth_login(body: LoginRequest):
+    if not verify_password(body.username, body.password):
+        raise HTTPException(status_code=401, detail='Invalid username or password')
+    token = create_session(body.username)
+    resp = JSONResponse({'ok': True, 'username': body.username})
+    resp.set_cookie('datnd_session', token, httponly=True, samesite='lax', max_age=24*60*60)
+    return resp
+
+@app.get('/api/auth/status')
+async def auth_status(request: Request):
+    username = get_session_user(request.cookies.get('datnd_session'))
+    return {'authenticated': bool(username), 'username': username or None}
+
+@app.post('/api/auth/change-password')
+async def auth_change_password(body: ChangePasswordRequest, request: Request):
+    username = get_session_user(request.cookies.get('datnd_session'))
+    if not username:
+        raise HTTPException(status_code=401, detail='Not logged in')
+    if body.new_password != body.confirm_password:
+        raise HTTPException(status_code=400, detail='Confirm password does not match')
+    ok, msg = change_password(username, body.current_password, body.new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {'ok': True, 'message': msg}
+
+@app.post('/api/auth/logout')
+async def auth_logout(request: Request):
+    delete_session(request.cookies.get('datnd_session'))
+    resp = JSONResponse({'ok': True})
+    resp.delete_cookie('datnd_session')
+    return resp
 
 @app.get('/', response_class=HTMLResponse)
 async def index(request: Request): return templates.TemplateResponse('index.html', {'request':request})

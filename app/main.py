@@ -22,6 +22,14 @@ class D3netKnxLinkRequest(BaseModel): targets: list[dict[str, Any]] = []; force:
 class LoginRequest(BaseModel): username: str; password: str
 class ChangePasswordRequest(BaseModel): current_password: str; new_password: str; confirm_password: str
 
+def _as_knx_bool(value: Any) -> bool:
+    if isinstance(value, bool): return value
+    if isinstance(value, (int, float)): return int(value) != 0
+    txt = str(value).strip().lower()
+    if txt in {'1','true','on','yes'}: return True
+    if txt in {'0','false','off','no'}: return False
+    raise ValueError(f'Invalid KNX boolean value: {value!r}')
+
 @app.post('/api/auth/login')
 async def auth_login(body: LoginRequest):
     if not verify_password(body.username, body.password):
@@ -153,11 +161,11 @@ async def knx_d3net_sync(body: D3netKnxLinkRequest):
 async def _handle_knx_control_event(event: dict[str,Any]):
     indoor=str(event.get('indoor') or '').strip(); field=str(event.get('field') or ''); val=event.get('value'); ga=event.get('ga',''); dpt=event.get('dpt','')
     try:
-        if field=='On/off Control': await runtime.set_power(indoor, bool(int(val)))
+        if field=='On/off Control': await runtime.set_power(indoor, _as_knx_bool(val))
         elif field=='Setpoint Control': await runtime.set_setpoint(indoor, float(val))
         elif field=='Setpoint Control UpDown':
             current = await runtime.get_setpoint(indoor)
-            step = 1 if bool(int(val)) else -1
+            step = 1 if _as_knx_bool(val) else -1
             new_value = current + step
             try:
                 min_v = float(event.get('min')) if event.get('min') not in (None, '') else None

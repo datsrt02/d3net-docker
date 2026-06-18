@@ -81,16 +81,46 @@ class KnxRuntime:
     def _extract_payload_bytes(self, payload: Any) -> list[int]:
         s=str(payload)
         return [int(x,16) for x in re.findall(r'0x([0-9a-fA-F]+)', s)]
+
+    def _extract_dpt1_value(self, payload: Any) -> int | None:
+        """Decode 1-bit KNX values from xknx payload objects or their string form.
+
+        DPT 1.001/1.007 telegrams are often represented by xknx as DPTBinary
+        without hex bytes, so the old hex-only parser returned an empty string.
+        """
+        try:
+            v = getattr(payload, 'value', None)
+            if hasattr(v, 'value'):
+                vv = getattr(v, 'value')
+                if isinstance(vv, bool): return 1 if vv else 0
+                if isinstance(vv, (int, float)): return 1 if int(vv) else 0
+                txt = str(vv).strip().lower()
+                if txt in {'1','true','on','yes'}: return 1
+                if txt in {'0','false','off','no'}: return 0
+        except Exception:
+            pass
+        s = str(payload).strip().lower()
+        m = re.search(r'dptbinary[^>]*value=\"([^\"]+)\"', s) or re.search(r'value=\"(true|false|0|1)\"', s)
+        if m:
+            txt = m.group(1).strip().lower()
+            if txt in {'1','true','on','yes'}: return 1
+            if txt in {'0','false','off','no'}: return 0
+        return None
+
     def _decode_dpt9(self, data):
         raw=((data[0]&255)<<8)|(data[1]&255); sign=-1 if raw&0x8000 else 1; exp=(raw>>11)&0x0F; mant=raw&0x07FF; return round(sign*.01*mant*(2**exp),2)
-    def _decode_value(self, dpt, data):
+    def _decode_value(self, dpt, data, payload=None):
+        if dpt.startswith('1.'):
+            direct = self._extract_dpt1_value(payload) if payload is not None else None
+            if direct is not None: return direct
+            if data: return 1 if data[-1]&1 else 0
+            return ''
         if not data: return ''
-        if dpt.startswith('1.'): return 1 if data[-1]&1 else 0
         if dpt.startswith('9.') and len(data)>=2: return self._decode_dpt9(data[-2:])
         if dpt.startswith('5.') or dpt.startswith('20.'): return data[-1]&255
         return '['+','.join(f'0x{x:02X}' for x in data)+']'
     def _decode_bus_value(self, dest, payload):
-        data=self._extract_payload_bytes(payload); dpt=self.ga_dpt_map.get(str(dest).strip(),'raw'); return dpt, self._decode_value(dpt,data)
+        data=self._extract_payload_bytes(payload); dpt=self.ga_dpt_map.get(str(dest).strip(),'raw'); return dpt, self._decode_value(dpt,data,payload)
     def _telegram_received(self, telegram):
         try:
             src=str(getattr(telegram,'source_address','')); dest=str(getattr(telegram,'destination_address','')); payload=getattr(telegram,'payload',None); typ=type(payload).__name__ if payload else 'Telegram'; dpt,val=self._decode_bus_value(dest,payload)

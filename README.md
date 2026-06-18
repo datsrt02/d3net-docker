@@ -36,3 +36,7 @@ Default login: `admin / admin`
 - Added ACTempSetpoint -> Setpoint Control UpDown KNX address.
 - DPT: 1.007. Value 1 increases setpoint by 1°C, value 0 decreases setpoint by 1°C.
 - The server reads the current D3net setpoint, writes the adjusted value to D3net holding register 42003, and also publishes the new value to the configured KNX Setpoint Control GA (DPT 9.001) for consistency.
+
+## v29
+- Fixed DPT 1.xxx incoming telegram decode for Setpoint Control UpDown.
+- Fixed KNX -> D3net UpDown handler so values 0/1 no longer become an empty string.

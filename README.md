@@ -30,3 +30,9 @@ Default login: `admin / admin`
 - Added Admin user dropdown with Change Password and Logout.
 - Added backend password storage in /app/data/users.json using PBKDF2-SHA256.
 - Updated Dockerfile pip install step to use Aliyun mirror with cache mount.
+
+
+## v28
+- Added ACTempSetpoint -> Setpoint Control UpDown KNX address.
+- DPT: 1.007. Value 1 increases setpoint by 1°C, value 0 decreases setpoint by 1°C.
+- The server reads the current D3net setpoint, writes the adjusted value to D3net holding register 42003, and also publishes the new value to the configured KNX Setpoint Control GA (DPT 9.001) for consistency.

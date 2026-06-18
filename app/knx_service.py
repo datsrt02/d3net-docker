@@ -96,7 +96,7 @@ class KnxRuntime:
             src=str(getattr(telegram,'source_address','')); dest=str(getattr(telegram,'destination_address','')); payload=getattr(telegram,'payload',None); typ=type(payload).__name__ if payload else 'Telegram'; dpt,val=self._decode_bus_value(dest,payload)
             if self.monitor_enabled: self.add_log('from bus',src,dest,typ,dpt,val)
             control=self.ga_control_map.get(dest)
-            if control and typ=='GroupValueWrite' and self._control_callback:
+            if control and typ=='GroupValueWrite' and self._control_callback and src != str(self.config.physical_address):
                 event=dict(control); event.update({'source':src,'value':val,'raw_type':typ}); asyncio.create_task(self._control_callback(event))
         except Exception as exc: self.add_log('KNX monitor error','', '-', 'Decode','',str(exc))
     def set_control_callback(self, cb): self._control_callback=cb
@@ -104,13 +104,15 @@ class KnxRuntime:
         dpt_map={}; control={}
         def add(ga,dpt):
             if ga: dpt_map[str(ga).strip()]=dpt
-        def addc(ga,dpt,target,field):
+        def addc(ga,dpt,target,field,extra=None):
             if ga:
                 g=str(ga).strip(); dpt_map[g]=dpt; control[g]={'target':target.get('target',''),'indoor':target.get('indoor',''),'field':field,'ga':g,'dpt':dpt}
+                if extra: control[g].update(extra)
         for t in targets or []:
             m=t.get('mapping') or {}; sw=m.get('switch') or {}; sp=m.get('setpoint') or {}; amb=m.get('ambient') or {}; mode=m.get('mode') or {}; fan=m.get('fan') or {}
             addc(sw.get('control'),'1.001',t,'On/off Control'); add(sw.get('status'),'1.001')
             addc(sp.get('control'),'9.001',t,'Setpoint Control'); add(sp.get('status'),'9.001'); add(amb.get('status'),'9.001')
+            addc(sp.get('updown'),'1.007',t,'Setpoint Control UpDown', {'setpoint_control_ga': sp.get('control'), 'min': sp.get('min'), 'max': sp.get('max')})
             addc(mode.get('control'),'20.105',t,'Mode Control'); add(mode.get('status'),'20.105')
             addc(fan.get('control'),'5.001',t,'Fan Control'); add(fan.get('status'),'5.001')
         self.ga_dpt_map.update(dpt_map); self.ga_control_map=control

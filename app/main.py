@@ -155,6 +155,22 @@ async def _handle_knx_control_event(event: dict[str,Any]):
     try:
         if field=='On/off Control': await runtime.set_power(indoor, bool(int(val)))
         elif field=='Setpoint Control': await runtime.set_setpoint(indoor, float(val))
+        elif field=='Setpoint Control UpDown':
+            current = await runtime.get_setpoint(indoor)
+            step = 1 if bool(int(val)) else -1
+            new_value = current + step
+            try:
+                min_v = float(event.get('min')) if event.get('min') not in (None, '') else None
+                max_v = float(event.get('max')) if event.get('max') not in (None, '') else None
+                if min_v is not None: new_value = max(min_v, new_value)
+                if max_v is not None: new_value = min(max_v, new_value)
+            except Exception:
+                pass
+            await runtime.set_setpoint(indoor, new_value)
+            target_ga = (event.get('setpoint_control_ga') or '').strip()
+            if target_ga:
+                knx_runtime.publish_group_value(target_ga, new_value, '9.001', force=True)
+            val = f'{current} -> {new_value}'
         elif field=='Mode Control':
             mp={9:0,1:1,3:2,0:3,14:7}; v=int(round(float(val))); await runtime.set_mode_raw(indoor, mp[v])
         elif field=='Fan Control':

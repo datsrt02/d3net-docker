@@ -137,6 +137,16 @@ class D3netRuntime:
 
     async def set_power(self, unit_id: str, power: bool) -> None:
         u=self.get_unit_by_id(unit_id); await u.async_write_prepare(); u.status.power=power; await u.async_write_commit(); await u.async_update_status(); await self.sync_all_to_virtual_modbus()
+    async def get_setpoint(self, unit_id: str) -> float:
+        u = self.get_unit_by_id(unit_id)
+        value = _safe(lambda: u.status.temp_setpoint)
+        if value is None:
+            await u.async_update_status()
+            value = _safe(lambda: u.status.temp_setpoint)
+        if value is None:
+            raise RuntimeError(f'Cannot read current setpoint for {unit_id}')
+        return float(value)
+
     async def set_setpoint(self, unit_id: str, value: float) -> None:
         u=self.get_unit_by_id(unit_id); await u.async_write_prepare(); u.status.temp_setpoint=value; await u.async_write_commit(); await u.async_update_status(); await self.sync_all_to_virtual_modbus()
     async def set_mode_raw(self, unit_id: str, raw_mode: int) -> None:

@@ -345,6 +345,15 @@ class D3netRuntime:
         await unit.async_update_status()
         await self.sync_all_to_virtual_modbus()
 
+    async def set_mode_raw(self, unit_id: str, raw_mode: int) -> None:
+        unit = self.get_unit_by_id(unit_id)
+        await unit.async_write_prepare()
+        unit.status.operating_mode = D3netOperationMode(int(raw_mode))
+        unit.status.power = True
+        await unit.async_write_commit()
+        await unit.async_update_status()
+        await self.sync_all_to_virtual_modbus()
+
     async def set_setpoint(self, unit_id: str, value: float) -> None:
         unit = self.get_unit_by_id(unit_id)
         await unit.async_write_prepare()
@@ -357,6 +366,14 @@ class D3netRuntime:
         unit = self.get_unit_by_id(unit_id)
         await unit.async_write_prepare()
         unit.status.fan_speed = D3netFanSpeed[speed]
+        await unit.async_write_commit()
+        await unit.async_update_status()
+        await self.sync_all_to_virtual_modbus()
+
+    async def set_fan_speed_raw(self, unit_id: str, raw_speed: int) -> None:
+        unit = self.get_unit_by_id(unit_id)
+        await unit.async_write_prepare()
+        unit.status.fan_speed = D3netFanSpeed(int(raw_speed))
         await unit.async_write_commit()
         await unit.async_update_status()
         await self.sync_all_to_virtual_modbus()

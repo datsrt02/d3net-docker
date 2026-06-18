@@ -21,6 +21,73 @@ runtime = D3netRuntime()
 knx_runtime = KnxRuntime()
 
 
+def _knx_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value).strip().lower() in {"1", "true", "on", "yes"}
+
+
+async def _handle_knx_control_event(event: dict[str, Any]) -> None:
+    """Apply KNX Control telegram values to D3net holding registers.
+
+    Mapping per indoor index:
+    42001 + index*3: on/off bit0, fan bits12..14
+    42002 + index*3: mode bits0..3
+    42003 + index*3: setpoint signed x10
+    """
+    indoor = str(event.get("indoor") or "").strip()
+    field = str(event.get("field") or "")
+    ga = str(event.get("ga") or "")
+    dpt = str(event.get("dpt") or "")
+    value = event.get("value")
+    if not indoor:
+        knx_runtime.add_log("D3net write error", event.get("source", ""), ga, "GroupValueWrite", dpt, "No indoor bound")
+        return
+
+    try:
+        if field == "On/off Control":
+            await runtime.set_power(indoor, _knx_bool(value))
+            applied = 1 if _knx_bool(value) else 0
+        elif field == "Setpoint Control":
+            await runtime.set_setpoint(indoor, float(value))
+            applied = float(value)
+        elif field == "Mode Control":
+            # KNX DPT 20.105 -> Daikin/DTA mode bits 0..3.
+            # Fan 9->0, Heat 1->1, Cool 3->2, Auto 0->3, Dry 14->7.
+            knx_to_dta = {9: 0, 1: 1, 3: 2, 0: 3, 14: 7}
+            v = int(round(float(value)))
+            if v not in knx_to_dta:
+                raise ValueError(f"Unsupported KNX mode {v}; allowed 9,1,3,0,14")
+            await runtime.set_mode_raw(indoor, knx_to_dta[v])
+            applied = f"KNX {v} -> DTA {knx_to_dta[v]}"
+        elif field == "Fan Control":
+            # KNX DPT 5.001 percentage byte -> Daikin fan speed bits 12..14.
+            # Reverse of status mapping: 0->0, 85->1, 170->3, 255->5.
+            v = int(round(float(value)))
+            if v <= 42:
+                raw = 0
+            elif v <= 127:
+                raw = 1
+            elif v <= 212:
+                raw = 3
+            else:
+                raw = 5
+            await runtime.set_fan_speed_raw(indoor, raw)
+            applied = f"KNX {v} -> DTA {raw}"
+        else:
+            return
+
+        knx_runtime.add_log("KNX -> D3net", event.get("source", ""), ga, "GroupValueWrite", dpt, f"{indoor} {field}: {applied}")
+    except Exception as exc:
+        knx_runtime.last_error = str(exc)
+        knx_runtime.add_log("D3net write error", event.get("source", ""), ga, "GroupValueWrite", dpt, str(exc))
+
+
+knx_runtime.set_control_callback(_handle_knx_control_event)
+
+
 class PowerRequest(BaseModel):
     power: bool
 

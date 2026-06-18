@@ -80,6 +80,8 @@ class KnxRuntime:
         self._lock = asyncio.Lock()
         self._last_published: dict[str, Any] = {}
         self.ga_dpt_map: dict[str, str] = {}
+        self.ga_control_map: dict[str, dict[str, Any]] = {}
+        self._control_callback: Any | None = None
 
     def set_config(self, config: KnxConfig) -> None:
         self.config = config
@@ -186,6 +188,8 @@ class KnxRuntime:
             "log_count": len(self.logs),
             "dpt_map_count": len(self.ga_dpt_map),
             "dpt_map": self.ga_dpt_map,
+            "control_map_count": len(self.ga_control_map),
+            "control_map": self.ga_control_map,
         }
 
     def add_log(self, service: str, source: str, destination: str, telegram_type: str, dpt: str, value: Any) -> None:
@@ -298,14 +302,36 @@ class KnxRuntime:
         # Therefore unknown addresses are shown as raw bytes.
         return "raw", "[" + ",".join(f"0x{x:02X}" for x in data) + "]"
 
-    def set_dpt_mapping_from_targets(self, targets: list[dict[str, Any]]) -> None:
-        """Update GA -> DPT lookup table from Indoor Mapping Address targets.
+    def set_control_callback(self, callback: Any) -> None:
+        """Register async callback for KNX control telegrams.
 
-        This table is used by the live KNX monitor to decode incoming telegrams
-        from the real KNX bus. Without it, 1-bit switch and 1-byte percentage
-        telegrams can be wrongly decoded as DPT 9.001.
+        The callback receives one dict containing: indoor, field, ga, dpt and value.
+        It is called for real GroupValueWrite telegrams received from KNX bus on
+        configured Control group addresses.
         """
+        self._control_callback = callback
+
+    def set_dpt_mapping_from_targets(self, targets: list[dict[str, Any]]) -> None:
+        """Update GA -> DPT and GA -> D3net control lookup tables from targets."""
         dpt_map: dict[str, str] = {}
+        control_map: dict[str, dict[str, Any]] = {}
+
+        def add_dpt(ga: Any, dpt: str) -> None:
+            if ga:
+                dpt_map[str(ga).strip()] = dpt
+
+        def add_control(ga: Any, dpt: str, target: dict[str, Any], field: str) -> None:
+            if ga:
+                ga_s = str(ga).strip()
+                dpt_map[ga_s] = dpt
+                control_map[ga_s] = {
+                    "target": target.get("target") or target.get("target_name") or target.get("name") or "",
+                    "indoor": str(target.get("indoor") or "").strip(),
+                    "field": field,
+                    "ga": ga_s,
+                    "dpt": dpt,
+                }
+
         for target in targets or []:
             mapping = target.get("mapping") or {}
             sw = mapping.get("switch") or {}
@@ -313,26 +339,45 @@ class KnxRuntime:
             amb = mapping.get("ambient") or {}
             mode = mapping.get("mode") or {}
             fan = mapping.get("fan") or {}
-            for ga in (sw.get("control"), sw.get("status")):
-                if ga: dpt_map[str(ga).strip()] = "1.001"
-            for ga in (sp.get("control"), sp.get("status"), amb.get("status")):
-                if ga: dpt_map[str(ga).strip()] = "9.001"
-            for ga in (mode.get("control"), mode.get("status")):
-                if ga: dpt_map[str(ga).strip()] = "20.105"
-            for ga in (fan.get("control"), fan.get("status")):
-                if ga: dpt_map[str(ga).strip()] = "5.001"
+
+            add_control(sw.get("control"), "1.001", target, "On/off Control")
+            add_dpt(sw.get("status"), "1.001")
+
+            add_control(sp.get("control"), "9.001", target, "Setpoint Control")
+            add_dpt(sp.get("status"), "9.001")
+            add_dpt(amb.get("status"), "9.001")
+
+            add_control(mode.get("control"), "20.105", target, "Mode Control")
+            add_dpt(mode.get("status"), "20.105")
+
+            add_control(fan.get("control"), "5.001", target, "Fan Control")
+            add_dpt(fan.get("status"), "5.001")
+
         self.ga_dpt_map.update(dpt_map)
+        self.ga_control_map = control_map
 
     def _telegram_received(self, telegram: Any) -> None:
-        if not self.monitor_enabled:
-            return
         try:
             source = str(getattr(telegram, "source_address", ""))
             destination = str(getattr(telegram, "destination_address", ""))
             payload = getattr(telegram, "payload", None)
             typ = type(payload).__name__ if payload is not None else "Telegram"
             dpt, value = self._decode_bus_value(destination, payload)
-            self.add_log("from bus", source, destination, typ, dpt, value)
+
+            if self.monitor_enabled:
+                self.add_log("from bus", source, destination, typ, dpt, value)
+
+            # KNX -> D3net control path. It must run even when Monitor Log is OFF.
+            # Only GroupValueWrite telegrams on configured Control GAs are applied.
+            control = self.ga_control_map.get(destination)
+            if control and typ == "GroupValueWrite" and self._control_callback is not None:
+                event = dict(control)
+                event.update({"source": source, "value": value, "raw_type": typ})
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self._control_callback(event))
+                except RuntimeError:
+                    pass
         except Exception as exc:
             self.add_log("KNX monitor error", "", "-", "Decode", "", str(exc))
 
@@ -351,9 +396,32 @@ class KnxRuntime:
             return DPTArray([max(0, min(255, int(round(float(value)))) )])
         raise ValueError(f"Unsupported DPT {dpt} for value {value!r}")
 
+    def _validate_group_address(self, address: str) -> str:
+        """Validate KNX 3-level group address before sending.
+
+        xknx uses the standard 3-level KNX syntax main/middle/sub where:
+        main=0..31, middle=0..7, sub=0..255.
+        Addresses such as 1/8/4 are therefore invalid because middle group 8 is
+        outside the KNX 3-level range. ETS may hide this when using another
+        address presentation, but the tunnel write must use a valid GA.
+        """
+        address = (address or "").strip()
+        m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{1,3})", address)
+        if not m:
+            raise ValueError(f"Invalid KNX group address '{address}'. Use 3-level format main/middle/sub, e.g. 1/4/70.")
+        main, middle, sub = map(int, m.groups())
+        if not (0 <= main <= 31):
+            raise ValueError(f"Invalid KNX group address '{address}': main group must be 0..31")
+        if not (0 <= middle <= 7):
+            raise ValueError(f"Invalid KNX group address '{address}': middle group must be 0..7. Use e.g. 1/7/x or change ETS GA structure; 1/8/4 is not valid 3-level KNX.")
+        if not (0 <= sub <= 255):
+            raise ValueError(f"Invalid KNX group address '{address}': sub group must be 0..255")
+        return address
+
     async def _send_group_value_async(self, destination: str, value: Any, dpt: str) -> bool:
         if not self.connected or self._xknx is None:
             raise RuntimeError("KNX is not connected")
+        destination = self._validate_group_address(destination)
         payload_value = self._payload_for_dpt(dpt, value)
         telegram = Telegram(
             destination_address=GroupAddress(destination),
@@ -366,27 +434,33 @@ class KnxRuntime:
     def publish_group_value(self, destination: str, value: Any, dpt: str, source: str | None = None, force: bool = False, label: str = "D3netLink") -> bool:
         """Send a D3net value to KNX bus and log it.
 
-        Returns True when a new value was accepted for sending/logging. If the value is unchanged
+        Returns True when a new valid value was accepted for sending/logging. If the value is unchanged
         and `force` is false, it returns False to avoid flooding the KNX bus.
         """
         destination = (destination or "").strip()
         if not destination:
             return False
+
+        # Validate before logging a D3net -> KNX row; otherwise the UI looks as if
+        # the value was sent even though xknx will reject the group address.
+        try:
+            destination = self._validate_group_address(destination)
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.add_log("KNX address error", source or self.config.physical_address, destination, "GroupValueWrite", dpt, self.last_error)
+            return False
+
         cache_key = f"{destination}|{dpt}"
         if not force and self._last_published.get(cache_key) == value:
             return False
         self._last_published[cache_key] = value
 
-        # Always log the attempted outgoing telegram so the UI remains useful.
         self.add_log("D3net -> KNX", source or self.config.physical_address, destination, "GroupValueWrite", dpt, value)
 
-        # Schedule the actual KNXnet/IP write. This method is intentionally sync because
-        # older endpoint code calls it from both sync and async contexts.
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(self._send_group_value_guarded(destination, value, dpt))
         except RuntimeError:
-            # Should not happen under FastAPI, but keep safe.
             pass
         return True
 

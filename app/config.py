@@ -18,6 +18,7 @@ class AppConfig(BaseModel):
     knx_gateway_port: int = Field(default=3671, ge=1, le=65535)
     knx_physical_address: str = '1.0.100'
     knx_protocol: str = 'TunnelUDP'
+    knx_auto_connect: bool = False
 
 def load_config() -> AppConfig:
     DATA_DIR.mkdir(parents=True, exist_ok=True)

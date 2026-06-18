@@ -22,6 +22,26 @@ class D3netKnxLinkRequest(BaseModel): targets: list[dict[str, Any]] = []; force:
 class LoginRequest(BaseModel): username: str; password: str
 class ChangePasswordRequest(BaseModel): current_password: str; new_password: str; confirm_password: str
 
+@app.on_event('startup')
+async def startup_auto_reconnect_knx():
+    cfg = load_config()
+    if getattr(cfg, 'knx_auto_connect', False):
+        knx_cfg = KnxConfig(gateway_name=cfg.knx_gateway_name, gateway_ip=cfg.knx_gateway_ip, gateway_port=cfg.knx_gateway_port, physical_address=cfg.knx_physical_address, protocol=cfg.knx_protocol)
+        async def _auto_connect():
+            try:
+                await knx_runtime.connect(knx_cfg, persistent=True)
+            except Exception as exc:
+                knx_runtime.last_error = str(exc)
+                knx_runtime.add_log('KNX gateway offline', knx_cfg.physical_address, '-', 'StartupReconnect', '', str(exc))
+                # keep reconnect loop alive even if first validation/connect fails later due to temporary offline
+                try:
+                    knx_runtime._desired_connected = True
+                    knx_runtime._ensure_reconnect_loop()
+                except Exception:
+                    pass
+        import asyncio
+        asyncio.create_task(_auto_connect())
+
 def _as_knx_bool(value: Any) -> bool:
     if isinstance(value, bool): return value
     if isinstance(value, (int, float)): return int(value) != 0
@@ -102,18 +122,23 @@ async def debug_unit(unit_id: str):
 
 @app.get('/api/knx/config')
 async def knx_get_config():
-    c=load_config(); return {'gateway_name':c.knx_gateway_name,'gateway_ip':c.knx_gateway_ip,'gateway_port':c.knx_gateway_port,'physical_address':c.knx_physical_address,'protocol':c.knx_protocol}
+    c=load_config(); return {'gateway_name':c.knx_gateway_name,'gateway_ip':c.knx_gateway_ip,'gateway_port':c.knx_gateway_port,'physical_address':c.knx_physical_address,'protocol':c.knx_protocol,'auto_connect':getattr(c,'knx_auto_connect',False)}
 @app.post('/api/knx/config')
 async def knx_set_config(cfg: KnxConfig):
     c=load_config(); c.knx_gateway_name=cfg.gateway_name; c.knx_gateway_ip=cfg.gateway_ip; c.knx_gateway_port=cfg.gateway_port; c.knx_physical_address=cfg.physical_address; c.knx_protocol=cfg.protocol; save_config(c); knx_runtime.set_config(cfg); return {'ok':True,'config':cfg.model_dump()}
 @app.post('/api/knx/connect')
 async def knx_connect(cfg: KnxConfig|None=None):
     try:
-        if cfg is None: cfg=KnxConfig(**await knx_get_config())
-        await knx_set_config(cfg); await knx_runtime.connect(cfg); return {'ok':True, **knx_runtime.status_json()}
+        if cfg is None:
+            data=await knx_get_config(); cfg=KnxConfig(**{k:v for k,v in data.items() if k in {'gateway_name','gateway_ip','gateway_port','physical_address','protocol'}})
+        await knx_set_config(cfg)
+        c=load_config(); c.knx_auto_connect=True; save_config(c)
+        await knx_runtime.connect(cfg, persistent=True); return {'ok':True, **knx_runtime.status_json()}
     except Exception as exc: raise HTTPException(status_code=400, detail=str(exc))
 @app.post('/api/knx/disconnect')
-async def knx_disconnect(): await knx_runtime.disconnect(); return {'ok':True, **knx_runtime.status_json()}
+async def knx_disconnect():
+    c=load_config(); c.knx_auto_connect=False; save_config(c)
+    await knx_runtime.disconnect(); return {'ok':True, **knx_runtime.status_json()}
 @app.get('/api/knx/status')
 async def knx_status(): return knx_runtime.status_json()
 @app.post('/api/knx/monitor')

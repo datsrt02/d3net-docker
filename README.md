@@ -40,3 +40,10 @@ Default login: `admin / admin`
 ## v29
 - Fixed DPT 1.xxx incoming telegram decode for Setpoint Control UpDown.
 - Fixed KNX -> D3net UpDown handler so values 0/1 no longer become an empty string.
+
+## v30
+- Validate KNX Gateway IP/port before connect.
+- KNX status reports Online only when xknx has a real tunnel connection.
+- Persist KNX auto-connect setting after Connect.
+- Auto reconnect after Docker/container restart when previously connected.
+- Keep reconnect loop active and report gateway offline when KNX/IP gateway is unreachable; reconnects automatically when gateway returns.

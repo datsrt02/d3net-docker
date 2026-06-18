@@ -1,39 +1,35 @@
 from __future__ import annotations
-
-import json
-import os
 from pathlib import Path
+import json
 from pydantic import BaseModel, Field
 
-CONFIG_FILE = Path(os.getenv("CONFIG_FILE", "/config/config.json"))
-
+DATA_DIR = Path('/app/data')
+CONFIG_PATH = DATA_DIR / 'config.json'
 
 class AppConfig(BaseModel):
-    name: str = "Daikin D3net"
-    upstream_host: str = "192.168.1.100"
-    upstream_port: int = Field(default=502, ge=1, le=65535)
-    upstream_slave: int = Field(default=1, ge=1, le=247)
-    upstream_protocol: str = Field(default="tcp", pattern="^(tcp|rtu_over_tcp)$")
-    poll_interval: float = 10.0
-    virtual_modbus_host: str = "0.0.0.0"
+    gateway_name: str = 'Daikin DIII Modbus Gateway'
+    gateway_ip: str = '192.168.1.100'
+    gateway_port: int = Field(default=502, ge=1, le=65535)
+    slave_id: int = Field(default=1, ge=1, le=247)
+    protocol: str = 'TCP'
     virtual_modbus_port: int = Field(default=1502, ge=1, le=65535)
-
-    # KNX Gateway configuration used by the Menu Management > KNX Gateway Config page.
-    knx_gateway_name: str = "KNX Main Gateway"
-    knx_gateway_ip: str = "192.168.1.10"
+    knx_gateway_name: str = 'KNX Main Gateway'
+    knx_gateway_ip: str = '192.168.1.10'
     knx_gateway_port: int = Field(default=3671, ge=1, le=65535)
-    knx_physical_address: str = "1.1.10"
-    knx_protocol: str = Field(default="TunnelUDP", pattern="^(TunnelUDP|TunnelTCP|Multicast)$")
-
+    knx_physical_address: str = '1.0.100'
+    knx_protocol: str = 'TunnelUDP'
 
 def load_config() -> AppConfig:
-    if CONFIG_FILE.exists():
-        return AppConfig(**json.loads(CONFIG_FILE.read_text(encoding="utf-8")))
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if CONFIG_PATH.exists():
+        try:
+            return AppConfig.model_validate_json(CONFIG_PATH.read_text())
+        except Exception:
+            pass
     cfg = AppConfig()
     save_config(cfg)
     return cfg
 
-
 def save_config(cfg: AppConfig) -> None:
-    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(cfg.model_dump_json(indent=2), encoding="utf-8")
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(cfg.model_dump_json(indent=2))

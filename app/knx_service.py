@@ -1,11 +1,8 @@
 from __future__ import annotations
-
-import asyncio
-import re
+import asyncio, re
 from collections import deque
 from datetime import datetime
-from typing import Any
-
+from typing import Any, Awaitable, Callable
 from pydantic import BaseModel, Field
 
 try:
@@ -13,469 +10,135 @@ try:
     from xknx.io import ConnectionConfig, ConnectionType
     from xknx.telegram import Telegram
     from xknx.telegram.address import GroupAddress, IndividualAddress
-    from xknx.telegram.apci import GroupValueWrite, GroupValueRead, GroupValueResponse
+    from xknx.telegram.apci import GroupValueWrite
     from xknx.dpt import DPTBinary, DPT2ByteFloat, DPTValue1ByteUnsigned, DPTArray
-except Exception:  # pragma: no cover - allows UI to start even if xknx is missing
+except Exception:
     XKNX = None
-    ConnectionConfig = None
-    ConnectionType = None
-    Telegram = None
-    GroupAddress = None
-    IndividualAddress = None
-    GroupValueWrite = None
-    GroupValueRead = None
-    GroupValueResponse = None
-    DPTBinary = None
-    DPT2ByteFloat = None
-    DPTValue1ByteUnsigned = None
-    DPTArray = None
-
 
 class KnxConfig(BaseModel):
-    gateway_name: str = "KNX Main Gateway"
-    gateway_ip: str = "192.168.1.10"
+    gateway_name: str = 'KNX Main Gateway'
+    gateway_ip: str = '192.168.1.10'
     gateway_port: int = Field(default=3671, ge=1, le=65535)
-    physical_address: str = "1.1.10"
-    protocol: str = Field(default="TunnelUDP", pattern="^(TunnelUDP|TunnelTCP|Multicast)$")
+    physical_address: str = '1.0.100'
+    protocol: str = 'TunnelUDP'
+class MonitorRequest(BaseModel): enabled: bool
 
-
-class KnxMapping(BaseModel):
-    indoor: str = "1-00"
-    power_ga: str = "1/4/70"
-    mode_ga: str = "1/4/71"
-    setpoint_ga: str = "1/4/72"
-    temp_ga: str = "1/4/73"
-    fan_ga: str = "1/4/74"
-
-
-class MonitorRequest(BaseModel):
-    enabled: bool
-
-
-def _boolish(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value != 0
-    return str(value).strip().lower() in {"1", "true", "on", "yes"}
-
+def _boolish(v: Any) -> bool:
+    if isinstance(v,bool): return v
+    if isinstance(v,(int,float)): return v != 0
+    return str(v).lower() in {'1','true','on','yes'}
 
 class KnxRuntime:
-    """KNXnet/IP runtime.
-
-    v18/v16 changes this from a UI-only placeholder into a real KNXnet/IP sender.
-    The monitor table still records outgoing telegrams locally, but `publish_group_value()`
-    now also sends GroupValueWrite telegrams to the configured KNX/IP gateway when connected.
-    """
-
     def __init__(self) -> None:
-        self.config = KnxConfig()
-        self.connected = False
-        self.monitor_enabled = False
-        self.last_error: str | None = None
-        self.logs: deque[dict[str, Any]] = deque(maxlen=500)
-        self.mappings: list[KnxMapping] = []
-        self._xknx: Any | None = None
-        self._xknx_task: asyncio.Task | None = None
-        self._lock = asyncio.Lock()
-        self._last_published: dict[str, Any] = {}
-        self.ga_dpt_map: dict[str, str] = {}
-        self.ga_control_map: dict[str, dict[str, Any]] = {}
-        self._control_callback: Any | None = None
+        self.config = KnxConfig(); self.connected=False; self.monitor_enabled=False; self.last_error=None
+        self.logs: deque[dict[str,Any]] = deque(maxlen=500); self._xknx=None; self._task=None; self._last_published={}
+        self.ga_dpt_map: dict[str,str] = {}; self.ga_control_map: dict[str,dict[str,Any]] = {}; self._control_callback=None
 
-    def set_config(self, config: KnxConfig) -> None:
-        self.config = config
-        self.add_log("local", config.physical_address, "-", "GatewayConfig", "", f"Saved {config.gateway_name} {config.gateway_ip}:{config.gateway_port}")
-
-    def _connection_type(self):
-        if ConnectionType is None:
-            return None
-        if self.config.protocol == "TunnelTCP":
-            return ConnectionType.TUNNELING_TCP
-        if self.config.protocol == "Multicast":
-            return ConnectionType.ROUTING
-        return ConnectionType.TUNNELING
-
-    async def connect(self, config: KnxConfig | None = None) -> None:
-        if config is not None:
-            self.config = config
-        async with self._lock:
-            await self._stop_xknx_locked()
-            if XKNX is None:
-                self.connected = False
-                self.last_error = "xknx is not installed in this container"
-                self.add_log("local", self.config.physical_address, "-", "ConnectError", "", self.last_error)
-                raise RuntimeError(self.last_error)
-
-            try:
-                connection_config = ConnectionConfig(
-                    connection_type=self._connection_type(),
-                    gateway_ip=self.config.gateway_ip if self.config.protocol != "Multicast" else None,
-                    gateway_port=self.config.gateway_port,
-                    individual_address=self.config.physical_address,
-                    multicast_port=self.config.gateway_port,
-                    auto_reconnect=True,
-                )
-                self._xknx = XKNX(
-                    connection_config=connection_config,
-                    telegram_received_cb=self._telegram_received,
-                    daemon_mode=True,
-                )
-
-                # XKNX v3.x may keep `start()` running as the KNX event loop.
-                # If we await it directly here, the FastAPI /api/knx/connect request never returns,
-                # so the web button looks like it has no reaction and `connected` remains false.
-                # Run it as a background task instead, then use the task to send telegrams.
-                self._xknx_task = asyncio.create_task(self._run_xknx())
-                await asyncio.sleep(0.3)
-                if self._xknx_task.done():
-                    exc = self._xknx_task.exception()
-                    if exc:
-                        raise exc
-                self.connected = True
-                self.last_error = None
-                self.add_log("local", self.config.physical_address, "-", "Connect", "", f"Started real KNX/IP {self.config.gateway_ip}:{self.config.gateway_port} via {self.config.protocol}")
-            except Exception as exc:
-                self._xknx = None
-                self.connected = False
-                self.last_error = str(exc)
-                self.add_log("local", self.config.physical_address, "-", "ConnectError", "", self.last_error)
-                raise
-
-
-    async def _run_xknx(self) -> None:
-        try:
-            if self._xknx is not None:
-                await self._xknx.start()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            self.connected = False
-            self.last_error = str(exc)
-            self.add_log("KNX error", self.config.physical_address, "-", "Connection", "", self.last_error)
-
-    async def disconnect(self) -> None:
-        async with self._lock:
-            await self._stop_xknx_locked()
-            self.connected = False
-            self.add_log("local", self.config.physical_address, "-", "Disconnect", "", "Disconnected")
-
-    async def _stop_xknx_locked(self) -> None:
-        if self._xknx is not None:
-            try:
-                await self._xknx.stop()
-            except Exception:
-                pass
-            self._xknx = None
-        if self._xknx_task is not None:
-            if not self._xknx_task.done():
-                self._xknx_task.cancel()
-                try:
-                    await self._xknx_task
-                except Exception:
-                    pass
-            self._xknx_task = None
-
-    def status_json(self) -> dict[str, Any]:
-        return {
-            "connected": self.connected,
-            "monitor_enabled": self.monitor_enabled,
-            "last_error": self.last_error,
-            "real_knx_enabled": self._xknx is not None,
-            "xknx_installed": XKNX is not None,
-            "xknx_task_running": bool(self._xknx_task is not None and not self._xknx_task.done()),
-            "config": self.config.model_dump(),
-            "log_count": len(self.logs),
-            "dpt_map_count": len(self.ga_dpt_map),
-            "dpt_map": self.ga_dpt_map,
-            "control_map_count": len(self.ga_control_map),
-            "control_map": self.ga_control_map,
-        }
-
-    def add_log(self, service: str, source: str, destination: str, telegram_type: str, dpt: str, value: Any) -> None:
-        self.logs.appendleft({
-            "time": datetime.now().strftime("%d-%b-%y %I:%M:%S.%f %p")[:-3],
-            "service": service,
-            "flags": "",
-            "prio": "Low",
-            "source_address": source,
-            "source_name": "",
-            "destination_address": destination,
-            "destination_route": "6" if destination != "-" else "",
-            "type": telegram_type,
-            "dpt": dpt,
-            "value": value,
-        })
-
-    def logs_json(self, limit: int = 100, ga_filter: str | None = None) -> list[dict[str, Any]]:
-        rows = list(self.logs)[: max(1, min(limit, 500))]
+    def add_log(self, service, source, destination, typ, dpt, value):
+        self.logs.appendleft({'time': datetime.now().strftime('%d-%b-%y %H:%M:%S.%f')[:-3], 'service':service, 'flags':'', 'prio':'Low', 'source_address':source, 'source_name':'', 'destination_address':destination, 'destination_route':'6' if destination!='-' else '', 'type':typ, 'dpt':dpt, 'value':value})
+    def logs_json(self, limit=100, ga_filter=None):
+        rows=list(self.logs)[:max(1,min(limit,500))]
         if ga_filter:
-            if ga_filter.endswith("*"):
-                prefix = ga_filter[:-1]
-                rows = [r for r in rows if str(r.get("destination_address", "")).startswith(prefix)]
-            else:
-                rows = [r for r in rows if r.get("destination_address") == ga_filter]
+            rows=[r for r in rows if str(r.get('destination_address','')).startswith(ga_filter[:-1] if ga_filter.endswith('*') else ga_filter)]
         return rows
+    def clear_logs(self): self.logs.clear()
+    def set_monitor(self, enabled: bool): self.monitor_enabled=enabled; self.add_log('local',self.config.physical_address,'-','Monitor','', 'ON' if enabled else 'OFF')
+    def set_config(self, cfg: KnxConfig): self.config=cfg; self.add_log('local',cfg.physical_address,'-','GatewayConfig','',f'Saved {cfg.gateway_name}')
+    def status_json(self): return {'connected':self.connected,'monitor_enabled':self.monitor_enabled,'last_error':self.last_error,'real_knx_enabled':self._xknx is not None,'xknx_installed':XKNX is not None,'xknx_task_running':bool(self._task and not self._task.done()),'config':self.config.model_dump(),'log_count':len(self.logs),'dpt_map_count':len(self.ga_dpt_map),'dpt_map':self.ga_dpt_map,'control_map_count':len(self.ga_control_map),'control_map':self.ga_control_map}
 
-    def clear_logs(self) -> None:
-        self.logs.clear()
-
-    def set_monitor(self, enabled: bool) -> None:
-        self.monitor_enabled = enabled
-        self.add_log("local", self.config.physical_address, "-", "Monitor", "", "ON" if enabled else "OFF")
+    def _conn_type(self):
+        if self.config.protocol == 'TunnelTCP': return ConnectionType.TUNNELING_TCP
+        if self.config.protocol == 'Multicast': return ConnectionType.ROUTING
+        return ConnectionType.TUNNELING
+    async def connect(self, cfg: KnxConfig|None=None):
+        if cfg: self.config=cfg
+        await self.disconnect(silent=True)
+        if XKNX is None: self.last_error='xknx not installed'; raise RuntimeError(self.last_error)
+        cc=ConnectionConfig(connection_type=self._conn_type(), gateway_ip=self.config.gateway_ip if self.config.protocol!='Multicast' else None, gateway_port=self.config.gateway_port, individual_address=self.config.physical_address, multicast_port=self.config.gateway_port, auto_reconnect=True)
+        self._xknx=XKNX(connection_config=cc, telegram_received_cb=self._telegram_received, daemon_mode=True)
+        self._task=asyncio.create_task(self._run())
+        await asyncio.sleep(.3)
+        if self._task.done() and self._task.exception(): raise self._task.exception()
+        self.connected=True; self.last_error=None; self.add_log('local',self.config.physical_address,'-','Connect','',f'Connected {self.config.gateway_ip}:{self.config.gateway_port}')
+    async def _run(self):
+        try:
+            await self._xknx.start()
+        except asyncio.CancelledError: raise
+        except Exception as exc:
+            self.connected=False; self.last_error=str(exc); self.add_log('KNX error',self.config.physical_address,'-','Connection','',str(exc))
+    async def disconnect(self, silent=False):
+        if self._xknx:
+            try: await self._xknx.stop()
+            except Exception: pass
+        self._xknx=None
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try: await self._task
+            except Exception: pass
+        self._task=None; self.connected=False
+        if not silent: self.add_log('local',self.config.physical_address,'-','Disconnect','','Disconnected')
 
     def _extract_payload_bytes(self, payload: Any) -> list[int]:
-        """Extract KNX payload bytes from xknx payload objects.
-
-        xknx represents incoming GroupValueWrite values as nested objects such as:
-        <GroupValueWrite value="<DPTArray value="[0x0,0x19]" />" />
-        The old monitor used str(payload), so the web table showed XML fragments.
-        This helper extracts the real byte values so the monitor can display decoded data.
-        """
-        if payload is None:
-            return []
-
-        candidates = []
-        value = getattr(payload, "value", None)
-        candidates.append(value)
-        candidates.append(getattr(value, "value", None))
-        candidates.append(payload)
-
-        for item in candidates:
-            if item is None:
-                continue
-            if isinstance(item, int):
-                return [item & 0xFF]
-            if isinstance(item, (bytes, bytearray)):
-                return [int(x) & 0xFF for x in item]
-            if isinstance(item, (list, tuple)):
-                try:
-                    return [int(x) & 0xFF for x in item]
-                except Exception:
-                    pass
-
-        text = str(payload)
-        hex_values = re.findall(r"0x[0-9a-fA-F]+", text)
-        if hex_values:
-            return [int(x, 16) & 0xFF for x in hex_values]
-        return []
-
-    def _decode_dpt9(self, data: list[int]) -> float:
-        """Decode KNX DPT 9.xxx 2-byte float.
-
-        KNX DPT9 format: 1 sign bit, 4 exponent bits, 11-bit mantissa.
-        Earlier versions treated mantissa bit 10 as a sign bit, which produced
-        wrong negative values for normal positive telegrams such as 0x0D72.
-        """
-        raw = ((data[0] & 0xFF) << 8) | (data[1] & 0xFF)
-        sign = -1 if (raw & 0x8000) else 1
-        exponent = (raw >> 11) & 0x0F
-        mantissa = raw & 0x07FF
-        return round(sign * 0.01 * mantissa * (2 ** exponent), 2)
-
-    def _decode_dpt_value(self, dpt: str, data: list[int]) -> Any:
-        dpt = (dpt or "").strip()
-        if not data:
-            return ""
-        if dpt.startswith("1."):
-            return 1 if (data[-1] & 0x01) else 0
-        if dpt.startswith("9.") and len(data) >= 2:
-            return self._decode_dpt9(data[-2:])
-        if dpt.startswith("5.") or dpt.startswith("20."):
-            return data[-1] & 0xFF
-        # Unknown DPT: do not guess. KNX telegrams do not carry DPT metadata.
-        # Return raw byte array so monitor does not show misleading values.
-        return "[" + ",".join(f"0x{x:02X}" for x in data) + "]"
-
-    def _decode_bus_value(self, destination: str, payload: Any) -> tuple[str, Any]:
-        data = self._extract_payload_bytes(payload)
-        if not data:
-            return "raw", str(payload) if payload is not None else ""
-
-        configured_dpt = self.ga_dpt_map.get(str(destination).strip())
-        if configured_dpt:
-            return configured_dpt, self._decode_dpt_value(configured_dpt, data)
-
-        # KNX telegrams do not include DPT information.
-        # Without a GA -> DPT mapping, auto-detection is only a guess and can be wrong
-        # e.g. every 2-byte telegram may look like DPT9 but actually be another DPT.
-        # Therefore unknown addresses are shown as raw bytes.
-        return "raw", "[" + ",".join(f"0x{x:02X}" for x in data) + "]"
-
-    def set_control_callback(self, callback: Any) -> None:
-        """Register async callback for KNX control telegrams.
-
-        The callback receives one dict containing: indoor, field, ga, dpt and value.
-        It is called for real GroupValueWrite telegrams received from KNX bus on
-        configured Control group addresses.
-        """
-        self._control_callback = callback
-
-    def set_dpt_mapping_from_targets(self, targets: list[dict[str, Any]]) -> None:
-        """Update GA -> DPT and GA -> D3net control lookup tables from targets."""
-        dpt_map: dict[str, str] = {}
-        control_map: dict[str, dict[str, Any]] = {}
-
-        def add_dpt(ga: Any, dpt: str) -> None:
-            if ga:
-                dpt_map[str(ga).strip()] = dpt
-
-        def add_control(ga: Any, dpt: str, target: dict[str, Any], field: str) -> None:
-            if ga:
-                ga_s = str(ga).strip()
-                dpt_map[ga_s] = dpt
-                control_map[ga_s] = {
-                    "target": target.get("target") or target.get("target_name") or target.get("name") or "",
-                    "indoor": str(target.get("indoor") or "").strip(),
-                    "field": field,
-                    "ga": ga_s,
-                    "dpt": dpt,
-                }
-
-        for target in targets or []:
-            mapping = target.get("mapping") or {}
-            sw = mapping.get("switch") or {}
-            sp = mapping.get("setpoint") or {}
-            amb = mapping.get("ambient") or {}
-            mode = mapping.get("mode") or {}
-            fan = mapping.get("fan") or {}
-
-            add_control(sw.get("control"), "1.001", target, "On/off Control")
-            add_dpt(sw.get("status"), "1.001")
-
-            add_control(sp.get("control"), "9.001", target, "Setpoint Control")
-            add_dpt(sp.get("status"), "9.001")
-            add_dpt(amb.get("status"), "9.001")
-
-            add_control(mode.get("control"), "20.105", target, "Mode Control")
-            add_dpt(mode.get("status"), "20.105")
-
-            add_control(fan.get("control"), "5.001", target, "Fan Control")
-            add_dpt(fan.get("status"), "5.001")
-
-        self.ga_dpt_map.update(dpt_map)
-        self.ga_control_map = control_map
-
-    def _telegram_received(self, telegram: Any) -> None:
+        s=str(payload)
+        return [int(x,16) for x in re.findall(r'0x([0-9a-fA-F]+)', s)]
+    def _decode_dpt9(self, data):
+        raw=((data[0]&255)<<8)|(data[1]&255); sign=-1 if raw&0x8000 else 1; exp=(raw>>11)&0x0F; mant=raw&0x07FF; return round(sign*.01*mant*(2**exp),2)
+    def _decode_value(self, dpt, data):
+        if not data: return ''
+        if dpt.startswith('1.'): return 1 if data[-1]&1 else 0
+        if dpt.startswith('9.') and len(data)>=2: return self._decode_dpt9(data[-2:])
+        if dpt.startswith('5.') or dpt.startswith('20.'): return data[-1]&255
+        return '['+','.join(f'0x{x:02X}' for x in data)+']'
+    def _decode_bus_value(self, dest, payload):
+        data=self._extract_payload_bytes(payload); dpt=self.ga_dpt_map.get(str(dest).strip(),'raw'); return dpt, self._decode_value(dpt,data)
+    def _telegram_received(self, telegram):
         try:
-            source = str(getattr(telegram, "source_address", ""))
-            destination = str(getattr(telegram, "destination_address", ""))
-            payload = getattr(telegram, "payload", None)
-            typ = type(payload).__name__ if payload is not None else "Telegram"
-            dpt, value = self._decode_bus_value(destination, payload)
-
-            if self.monitor_enabled:
-                self.add_log("from bus", source, destination, typ, dpt, value)
-
-            # KNX -> D3net control path. It must run even when Monitor Log is OFF.
-            # Only GroupValueWrite telegrams on configured Control GAs are applied.
-            control = self.ga_control_map.get(destination)
-            if control and typ == "GroupValueWrite" and self._control_callback is not None:
-                event = dict(control)
-                event.update({"source": source, "value": value, "raw_type": typ})
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(self._control_callback(event))
-                except RuntimeError:
-                    pass
-        except Exception as exc:
-            self.add_log("KNX monitor error", "", "-", "Decode", "", str(exc))
-
-    def _payload_for_dpt(self, dpt: str, value: Any):
-        dpt = (dpt or "").strip()
-        if DPTBinary is None or DPTArray is None:
-            raise RuntimeError("xknx DPT classes are not available")
-        if dpt.startswith("1."):
-            return DPTBinary(1 if _boolish(value) else 0)
-        if dpt.startswith("9."):
-            return DPT2ByteFloat.to_knx(float(value))
-        if dpt.startswith("5.") or dpt.startswith("20."):
-            return DPTValue1ByteUnsigned.to_knx(int(round(float(value))))
-        # Fallback: send one raw byte for byte-like status values.
-        if isinstance(value, (int, float)) or str(value).strip().lstrip("-").isdigit():
-            return DPTArray([max(0, min(255, int(round(float(value)))) )])
-        raise ValueError(f"Unsupported DPT {dpt} for value {value!r}")
-
+            src=str(getattr(telegram,'source_address','')); dest=str(getattr(telegram,'destination_address','')); payload=getattr(telegram,'payload',None); typ=type(payload).__name__ if payload else 'Telegram'; dpt,val=self._decode_bus_value(dest,payload)
+            if self.monitor_enabled: self.add_log('from bus',src,dest,typ,dpt,val)
+            control=self.ga_control_map.get(dest)
+            if control and typ=='GroupValueWrite' and self._control_callback:
+                event=dict(control); event.update({'source':src,'value':val,'raw_type':typ}); asyncio.create_task(self._control_callback(event))
+        except Exception as exc: self.add_log('KNX monitor error','', '-', 'Decode','',str(exc))
+    def set_control_callback(self, cb): self._control_callback=cb
+    def set_dpt_mapping_from_targets(self, targets: list[dict[str,Any]]):
+        dpt_map={}; control={}
+        def add(ga,dpt):
+            if ga: dpt_map[str(ga).strip()]=dpt
+        def addc(ga,dpt,target,field):
+            if ga:
+                g=str(ga).strip(); dpt_map[g]=dpt; control[g]={'target':target.get('target',''),'indoor':target.get('indoor',''),'field':field,'ga':g,'dpt':dpt}
+        for t in targets or []:
+            m=t.get('mapping') or {}; sw=m.get('switch') or {}; sp=m.get('setpoint') or {}; amb=m.get('ambient') or {}; mode=m.get('mode') or {}; fan=m.get('fan') or {}
+            addc(sw.get('control'),'1.001',t,'On/off Control'); add(sw.get('status'),'1.001')
+            addc(sp.get('control'),'9.001',t,'Setpoint Control'); add(sp.get('status'),'9.001'); add(amb.get('status'),'9.001')
+            addc(mode.get('control'),'20.105',t,'Mode Control'); add(mode.get('status'),'20.105')
+            addc(fan.get('control'),'5.001',t,'Fan Control'); add(fan.get('status'),'5.001')
+        self.ga_dpt_map.update(dpt_map); self.ga_control_map=control
     def _validate_group_address(self, address: str) -> str:
-        """Validate KNX 3-level group address before sending.
-
-        xknx uses the standard 3-level KNX syntax main/middle/sub where:
-        main=0..31, middle=0..7, sub=0..255.
-        Addresses such as 1/8/4 are therefore invalid because middle group 8 is
-        outside the KNX 3-level range. ETS may hide this when using another
-        address presentation, but the tunnel write must use a valid GA.
-        """
-        address = (address or "").strip()
-        m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{1,3})", address)
-        if not m:
-            raise ValueError(f"Invalid KNX group address '{address}'. Use 3-level format main/middle/sub, e.g. 1/4/70.")
-        main, middle, sub = map(int, m.groups())
-        if not (0 <= main <= 31):
-            raise ValueError(f"Invalid KNX group address '{address}': main group must be 0..31")
-        if not (0 <= middle <= 7):
-            raise ValueError(f"Invalid KNX group address '{address}': middle group must be 0..7. Use e.g. 1/7/x or change ETS GA structure; 1/8/4 is not valid 3-level KNX.")
-        if not (0 <= sub <= 255):
-            raise ValueError(f"Invalid KNX group address '{address}': sub group must be 0..255")
+        m=re.fullmatch(r'(\d{1,2})/(\d{1,2})/(\d{1,3})', (address or '').strip())
+        if not m: raise ValueError(f'Invalid KNX group address {address}')
+        main,mid,sub=map(int,m.groups())
+        if not (0<=main<=31 and 0<=mid<=7 and 0<=sub<=255): raise ValueError(f'Invalid KNX group address {address}: 3-level range is main 0..31 / middle 0..7 / sub 0..255')
         return address
-
-    async def _send_group_value_async(self, destination: str, value: Any, dpt: str) -> bool:
-        if not self.connected or self._xknx is None:
-            raise RuntimeError("KNX is not connected")
-        destination = self._validate_group_address(destination)
-        payload_value = self._payload_for_dpt(dpt, value)
-        telegram = Telegram(
-            destination_address=GroupAddress(destination),
-            payload=GroupValueWrite(payload_value),
-            source_address=IndividualAddress(self.config.physical_address),
-        )
+    def _payload_for_dpt(self,dpt,value):
+        if dpt.startswith('1.'): return DPTBinary(1 if _boolish(value) else 0)
+        if dpt.startswith('9.'): return DPT2ByteFloat.to_knx(float(value))
+        if dpt.startswith('5.') or dpt.startswith('20.'): return DPTValue1ByteUnsigned.to_knx(int(round(float(value))))
+        return DPTArray([int(value)&255])
+    async def _send_group_value(self,dest,value,dpt):
+        if not self.connected or not self._xknx: raise RuntimeError('KNX is not connected')
+        dest=self._validate_group_address(dest); payload=self._payload_for_dpt(dpt,value)
+        telegram=Telegram(destination_address=GroupAddress(dest), payload=GroupValueWrite(payload), source_address=IndividualAddress(self.config.physical_address))
         await self._xknx.telegrams.put(telegram)
-        return True
-
-    def publish_group_value(self, destination: str, value: Any, dpt: str, source: str | None = None, force: bool = False, label: str = "D3netLink") -> bool:
-        """Send a D3net value to KNX bus and log it.
-
-        Returns True when a new valid value was accepted for sending/logging. If the value is unchanged
-        and `force` is false, it returns False to avoid flooding the KNX bus.
-        """
-        destination = (destination or "").strip()
-        if not destination:
-            return False
-
-        # Validate before logging a D3net -> KNX row; otherwise the UI looks as if
-        # the value was sent even though xknx will reject the group address.
-        try:
-            destination = self._validate_group_address(destination)
-        except Exception as exc:
-            self.last_error = str(exc)
-            self.add_log("KNX address error", source or self.config.physical_address, destination, "GroupValueWrite", dpt, self.last_error)
-            return False
-
-        cache_key = f"{destination}|{dpt}"
-        if not force and self._last_published.get(cache_key) == value:
-            return False
-        self._last_published[cache_key] = value
-
-        self.add_log("D3net -> KNX", source or self.config.physical_address, destination, "GroupValueWrite", dpt, value)
-
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._send_group_value_guarded(destination, value, dpt))
-        except RuntimeError:
-            pass
-        return True
-
-    async def _send_group_value_guarded(self, destination: str, value: Any, dpt: str) -> None:
-        try:
-            await self._send_group_value_async(destination, value, dpt)
-            self.add_log("to bus", self.config.physical_address, destination, "GroupValueWrite", dpt, value)
-        except Exception as exc:
-            self.last_error = str(exc)
-            self.add_log("KNX error", self.config.physical_address, destination, "GroupValueWrite", dpt, self.last_error)
-
-    def save_mapping(self, mapping: KnxMapping) -> None:
-        self.mappings = [m for m in self.mappings if m.indoor != mapping.indoor]
-        self.mappings.append(mapping)
-        self.add_log("local", self.config.physical_address, "-", "Mapping", "", f"Saved mapping for {mapping.indoor}")
-
-    def mappings_json(self) -> list[dict[str, Any]]:
-        return [m.model_dump() for m in self.mappings]
+    def publish_group_value(self,dest,value,dpt,source=None,force=False,label='D3netLink'):
+        dest=(dest or '').strip()
+        if not dest: return False
+        try: dest=self._validate_group_address(dest)
+        except Exception as exc: self.last_error=str(exc); self.add_log('KNX address error',source or self.config.physical_address,dest,'GroupValueWrite',dpt,str(exc)); return False
+        key=f'{dest}|{dpt}'
+        if not force and self._last_published.get(key)==value: return False
+        self._last_published[key]=value; self.add_log('D3net -> KNX',source or self.config.physical_address,dest,'GroupValueWrite',dpt,value)
+        asyncio.create_task(self._send_guarded(dest,value,dpt)); return True
+    async def _send_guarded(self,dest,value,dpt):
+        try: await self._send_group_value(dest,value,dpt); self.add_log('to bus',self.config.physical_address,dest,'GroupValueWrite',dpt,value)
+        except Exception as exc: self.last_error=str(exc); self.add_log('KNX error',self.config.physical_address,dest,'GroupValueWrite',dpt,str(exc))

@@ -95,21 +95,10 @@ class D3netGateway:
 
                 for index, connected in enumerate(system_decoder.units_connected):
                     if connected and not system_decoder.units_error[index]:
-                        try:
-                            capabilities: UnitCapability = await self._async_read(
-                                UnitCapability, index
-                            )
-                            status: UnitStatus = await self._async_read(UnitStatus, index)
-                        except Exception as exc:
-                            # Do not drop a discovered indoor only because its capability/status
-                            # group cannot be read yet. Some gateways need more time after 30001
-                            # becomes ready. The poll loop will refresh the real values later.
-                            _LOGGER.warning(
-                                "Unit %02i exists in 30002-30005 but capability/status read failed: %s",
-                                index, exc,
-                            )
-                            capabilities = UnitCapability([0, 0, 0])
-                            status = UnitStatus([1, 0, 220, 0, 250, 0])
+                        capabilities: UnitCapability = await self._async_read(
+                            UnitCapability, index
+                        )
+                        status: UnitStatus = await self._async_read(UnitStatus, index)
                         unit = D3netUnit(self, index, capabilities, status)
                         self._units.append(unit)
 
@@ -128,9 +117,7 @@ class D3netGateway:
         """Load registers and return a decode object. Must already hold a lock and connection."""
         await self._throttle_start()
         response = None
-        address = int(Decoder.ADDRESS + index * Decoder.COUNT)
-        if address < 0 or address >= 65535:
-            raise ValueError(f"Invalid Modbus register address {address}. Check DIII index/register mapping; Modbus address must be zero-based and < 65535")
+        address = Decoder.ADDRESS + index * Decoder.COUNT
         if Decoder.TYPE == D3netRegisterType.Holding:
             response = await self._client.read_holding_registers(
                 address=address,
@@ -161,9 +148,7 @@ class D3netGateway:
             async with self._lock:
                 await self._async_connect()
                 await self._throttle_start()
-                address = int(decode.ADDRESS + index * decode.COUNT)
-                if address < 0 or address >= 65535:
-                    raise ValueError(f"Invalid Modbus holding address {address}. Check DIII index/register mapping; Modbus address must be zero-based and < 65535")
+                address = decode.ADDRESS + index * decode.COUNT
                 await self._client.write_registers(
                     address=address, device_id=self._device_id, values=decode.registers
                 )
